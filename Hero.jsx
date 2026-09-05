@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Zap, ShieldCheck, Truck, Award, ArrowRight, Cpu, Wrench, ChevronLeft, ChevronRight, Sparkles, Flame, Percent } from 'lucide-react';
+import { Zap, ShieldCheck, Truck, Award, ArrowRight, Cpu, Wrench, ChevronLeft, ChevronRight, Sparkles, Flame, Percent, ChevronDown } from 'lucide-react';
 
 export default function Hero({ onExploreClick, onBuilderClick }) {
   const slides = [
@@ -7,11 +7,11 @@ export default function Hero({ onExploreClick, onBuilderClick }) {
       id: 'rtx5090',
       badge: '🔥 NEW RELEASE 2026',
       badgeColor: '#00f0ff',
-      title: 'NEXT-GEN GRAPHICS UNLEASHED',
-      subtitle: 'NVIDIA RTX 5090 OC GDDR7X 32GB',
-      description: 'Experience 4K 240Hz ultra ray tracing performance with 32GB GDDR7 memory and DLSS 4 AI frame generation.',
+      title: "WORLD'S NEW GEN GRAPHICS.",
+      subtitle: 'MSI NVIDIA RTX 5090 OC GDDR7X 32GB VANGUARD SOC GAMING GRAPHIC CARD',
+      description: 'Experience 4K 240Hz ultra ray tracing performance with 32GB GDDR7 memory and latest DLSS 5 AI frame generation.',
       image: '/hero-rtx5090.jpg',
-      fallbackImage: 'https://images.unsplash.com/photo-1587202372775-e229f172b9d7?auto=format&fit=crop&w=800&q=80',
+      fallbackImage: 'msig1.jpg',
       specs: [
         { label: 'BOOST CLOCK', value: '2900 MHz' },
         { label: 'VRAM MEMORY', value: '32GB GDDR7X' },
@@ -30,7 +30,7 @@ export default function Hero({ onExploreClick, onBuilderClick }) {
       subtitle: 'Real-Time Compatibility & Power Calculator',
       description: 'Select matching CPUs, liquid coolers, DDR5 RAM & Gen5 NVMe SSDs with instant power draw verification.',
       image: '/hero-builder.jpg',
-      fallbackImage: 'https://images.unsplash.com/photo-1587202372775-e229f172b9d7?auto=format&fit=crop&w=800&q=80',
+      fallbackImage: 'gaminpc.jpg',
       specs: [
         { label: 'COMPATIBILITY', value: '100% VERIFIED' },
         { label: 'POWER CHECK', value: 'AUTOMATIC' },
@@ -46,10 +46,10 @@ export default function Hero({ onExploreClick, onBuilderClick }) {
       badge: '⚡ LIMITED TIME FLASH DEALS',
       badgeColor: '#ff0055',
       title: 'UP TO 30% OFF PREMIUM HARDWARE',
-      subtitle: 'Ryzen 9 7950X3D & Samsung 990 Pro SSDs',
+      subtitle: 'PROCESSORS AND MOTHERBOARDS',
       description: 'Insane discounts on top-tier processors, ultra-fast PCIe 5.0 SSD storage, and 240Hz OLED gaming monitors.',
       image: '/hero-flashsale.jpg',
-      fallbackImage: 'https://images.unsplash.com/photo-1587202372775-e229f172b9d7?auto=format&fit=crop&w=800&q=80',
+      fallbackImage: 'moandpo.jpg',
       specs: [
         { label: 'MAX DISCOUNT', value: 'UP TO 30% OFF', valueColor: '#ff0055' },
         { label: 'EXPRESS SHIP', value: '24H DISPATCH' },
@@ -82,20 +82,15 @@ export default function Hero({ onExploreClick, onBuilderClick }) {
   ];
 
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [isHovered, setIsHovered] = useState(false);
-  const [slideDuration, setSlideDuration] = useState(4); // default 4 seconds
-  const [isPaused, setIsPaused] = useState(false);
 
-  // Auto-play slideshow timer
+  // Auto-play slideshow timer (3 seconds continuous auto-rotation)
   useEffect(() => {
-    if (isHovered || isPaused) return;
-
     const timer = setInterval(() => {
       setCurrentSlide((prevSlide) => (prevSlide + 1) % slides.length);
-    }, slideDuration * 1000);
+    }, 3000);
 
     return () => clearInterval(timer);
-  }, [isHovered, isPaused, slideDuration, slides.length]);
+  }, [slides.length]);
 
   const activeSlide = slides[currentSlide];
 
@@ -121,14 +116,19 @@ export default function Hero({ onExploreClick, onBuilderClick }) {
 
   return (
     <section
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       style={{
         position: 'relative',
-        padding: '3.5rem 0 2.5rem',
+        minHeight: 'calc(100vh - 80px)',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        padding: '3rem 0 2rem',
         overflow: 'hidden',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-        backgroundColor: '#070911'
+        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+        backgroundColor: '#070911',
+        backgroundImage: 'linear-gradient(90deg, rgba(7, 9, 17, 0.95) 0%, rgba(7, 9, 17, 0.85) 50%, rgba(7, 9, 17, 0.65) 100%), url(https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1600&q=80), url(gaminpc.jpg)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center'
       }}
     >
       {/* Background Ambient Glows */}
@@ -176,58 +176,7 @@ export default function Hero({ onExploreClick, onBuilderClick }) {
               <span>{activeSlide.badge}</span>
             </div>
 
-            {/* Time Timer Selector */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              backgroundColor: '#121624',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              borderRadius: '12px',
-              padding: '3px 8px',
-              fontSize: '0.72rem',
-              color: '#8e9bb0',
-              fontFamily: 'var(--font-stats)'
-            }}>
-              <span>ROTATE TIMER:</span>
-              {[3, 5, 8].map((sec) => (
-                <button
-                  key={sec}
-                  onClick={() => setSlideDuration(sec)}
-                  style={{
-                    backgroundColor: slideDuration === sec ? activeSlide.badgeColor : 'transparent',
-                    color: slideDuration === sec ? '#000' : '#8e9bb0',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '2px 6px',
-                    fontSize: '0.7rem',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  {sec}s
-                </button>
-              ))}
 
-              <button
-                onClick={() => setIsPaused(!isPaused)}
-                title={isPaused ? "Resume auto-rotation" : "Pause auto-rotation"}
-                style={{
-                  backgroundColor: isPaused ? '#ff0055' : 'rgba(255,255,255,0.08)',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  padding: '2px 8px',
-                  fontSize: '0.7rem',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  marginLeft: '4px'
-                }}
-              >
-                {isPaused ? 'PAUSED' : 'AUTO'}
-              </button>
-            </div>
           </div>
 
           {/* Controls: Prev / Next Buttons & Indicators */}
@@ -470,7 +419,33 @@ export default function Hero({ onExploreClick, onBuilderClick }) {
               </div>
             </div>
           </div>
+        </div>
 
+        {/* Scroll Down Prompt Indicator to view all other parts */}
+        <div
+          onClick={() => {
+            window.scrollTo({ top: window.innerHeight - 60, behavior: 'smooth' });
+          }}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginTop: '2.5rem',
+            gap: '0.4rem',
+            color: '#8e9bb0',
+            fontSize: '0.78rem',
+            fontFamily: 'var(--font-stats)',
+            letterSpacing: '1.5px',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            userSelect: 'none'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.color = '#00f0ff'}
+          onMouseLeave={(e) => e.currentTarget.style.color = '#8e9bb0'}
+        >
+          <span>SCROLL DOWN TO EXPLORE HARDWARE & DEALS</span>
+          <ChevronDown size={20} color="#00f0ff" />
         </div>
       </div>
     </section>

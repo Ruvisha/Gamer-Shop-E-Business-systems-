@@ -8,7 +8,8 @@ import PcBuilder from './PcBuilder';
 import ProductGrid from './ProductGrid';
 import Testimonials from './Testimonials';
 import Footer from './Footer';
-import ProductModal from './ProductModal';
+import ProductDetailsPage from './ProductDetailsPage';
+import VideoShowcase from './VideoShowcase';
 import CartDrawer from './CartDrawer';
 import AuthModal from './AuthModal';
 import Toast from './Toast';
@@ -21,12 +22,21 @@ export default function App() {
   ]);
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [quickViewProduct, setQuickViewProduct] = useState(null);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [previousSection, setPreviousSection] = useState('catalog');
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [user, setUser] = useState(null);
   const [toast, setToast] = useState(null);
-  const [activeSection, setActiveSection] = useState('home'); // 'home', 'catalog', 'builder', 'deals'
+  const [activeSection, setActiveSection] = useState('home'); // 'home', 'catalog', 'builder', 'deals', 'product-details'
+
+  const handleOpenProductDetails = (product) => {
+    setSelectedProduct(product);
+    if (activeSection !== 'product-details') {
+      setPreviousSection(activeSection);
+    }
+    setActiveSection('product-details');
+  };
 
   // Cart Handlers
   const handleAddToCart = (product) => {
@@ -159,9 +169,13 @@ export default function App() {
               onExploreClick={() => setActiveSection('catalog')}
               onBuilderClick={() => setActiveSection('builder')}
             />
+            <VideoShowcase
+              onExploreClick={() => setActiveSection('catalog')}
+              onBuilderClick={() => setActiveSection('builder')}
+            />
             <FlashSale
               onAddToCart={handleAddToCart}
-              onQuickView={(prod) => setQuickViewProduct(prod)}
+              onQuickView={handleOpenProductDetails}
             />
             <CategoryNav
               activeCategory={activeCategory}
@@ -188,7 +202,7 @@ export default function App() {
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
               onAddToCart={handleAddToCart}
-              onQuickView={(prod) => setQuickViewProduct(prod)}
+              onQuickView={handleOpenProductDetails}
             />
           </div>
         )}
@@ -207,7 +221,7 @@ export default function App() {
           <div style={{ padding: '1rem 0 3rem' }}>
             <FlashSale
               onAddToCart={handleAddToCart}
-              onQuickView={(prod) => setQuickViewProduct(prod)}
+              onQuickView={handleOpenProductDetails}
             />
             <ProductGrid
               products={dealProducts}
@@ -216,21 +230,26 @@ export default function App() {
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
               onAddToCart={handleAddToCart}
-              onQuickView={(prod) => setQuickViewProduct(prod)}
+              onQuickView={handleOpenProductDetails}
             />
           </div>
+        )}
+
+        {/* 5. DEDICATED FULL PRODUCT DETAILS PAGE */}
+        {activeSection === 'product-details' && selectedProduct && (
+          <ProductDetailsPage
+            product={selectedProduct}
+            allProducts={products}
+            onBack={() => setActiveSection(previousSection || 'catalog')}
+            onAddToCart={handleAddToCart}
+            onViewProduct={handleOpenProductDetails}
+            onOpenCart={() => setIsCartOpen(true)}
+          />
         )}
       </div>
 
       {/* Footer */}
       <Footer onShowToast={(t) => setToast(t)} />
-
-      {/* Modals & Drawers */}
-      <ProductModal
-        product={quickViewProduct}
-        onClose={() => setQuickViewProduct(null)}
-        onAddToCart={handleAddToCart}
-      />
 
       <CartDrawer
         isOpen={isCartOpen}
