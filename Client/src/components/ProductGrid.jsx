@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import ProductCard from './ProductCard';
-import { SlidersHorizontal, ArrowUpDown, Flame, SearchX, RotateCcw, Filter, Check, Tag, Star, DollarSign, Cpu } from 'lucide-react';
+import { SlidersHorizontal, ArrowUpDown, Flame, SearchX, RotateCcw, Filter, Check, Tag, Star, DollarSign, Cpu, Plus, ShieldAlert } from 'lucide-react';
 import { categories } from './products';
 
 export default function ProductGrid({ 
@@ -10,7 +10,11 @@ export default function ProductGrid({
   searchQuery, 
   setSearchQuery,
   onAddToCart, 
-  onQuickView 
+  onQuickView,
+  user,
+  onEditProduct,
+  onDeleteProduct,
+  onOpenAddProductModal
 }) {
   // Multi-Criteria State
   const [selectedBrand, setSelectedBrand] = useState('all');
@@ -565,12 +569,57 @@ export default function ProductGrid({
             {/* Product Cards Grid */}
             {filteredProducts.length > 0 ? (
               <div className="grid-products">
+                {user?.role === 'admin' && (
+                  <div 
+                    onClick={onOpenAddProductModal}
+                    style={{
+                      border: '2px dashed rgba(255, 0, 100, 0.6)',
+                      borderRadius: '16px',
+                      padding: '2rem 1.5rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      textAlign: 'center',
+                      gap: '0.8rem',
+                      backgroundColor: 'rgba(255, 0, 100, 0.05)',
+                      cursor: 'pointer',
+                      minHeight: '320px',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.borderColor = '#ff0066'}
+                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'rgba(255, 0, 100, 0.6)'}
+                  >
+                    <div style={{
+                      width: '60px',
+                      height: '60px',
+                      borderRadius: '50%',
+                      backgroundColor: 'rgba(255, 0, 100, 0.15)',
+                      border: '1px solid #ff0066',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 0 20px rgba(255, 0, 100, 0.3)'
+                    }}>
+                      <Plus size={30} color="#ff0066" />
+                    </div>
+                    <h3 style={{ color: '#ff0066', fontSize: '1.1rem', fontWeight: 900, margin: 0, fontFamily: "'Orbitron', sans-serif" }}>
+                      + ADD NEW PRODUCT
+                    </h3>
+                    <p style={{ color: '#8e9bb0', fontSize: '0.78rem', margin: 0, maxWidth: '200px' }}>
+                      Click to open Admin Product Form and create a new item.
+                    </p>
+                  </div>
+                )}
                 {filteredProducts.map((product) => (
                   <ProductCard
                     key={product.id}
                     product={product}
                     onAddToCart={onAddToCart}
                     onQuickView={onQuickView}
+                    user={user}
+                    onEditProduct={onEditProduct}
+                    onDeleteProduct={onDeleteProduct}
                   />
                 ))}
               </div>
