@@ -1,7 +1,8 @@
 import React from 'react';
-import { Star, ShoppingCart, Eye, Zap, ShieldCheck } from 'lucide-react';
+import { Star, ShoppingCart, Eye, Zap, ShieldCheck, Edit3, Trash2, ShieldAlert } from 'lucide-react';
 
-export default function ProductCard({ product, onAddToCart, onQuickView }) {
+export default function ProductCard({ product, onAddToCart, onQuickView, user, onEditProduct, onDeleteProduct }) {
+  const isAdmin = user?.role === 'admin';
   const discountPercent = product.originalPrice 
     ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100) 
     : 0;
@@ -11,12 +12,78 @@ export default function ProductCard({ product, onAddToCart, onQuickView }) {
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      justifyContent: 'space-between'
+      justifyContent: 'space-between',
+      position: 'relative',
+      border: isAdmin ? '1px solid rgba(255, 0, 100, 0.4)' : '1px solid rgba(0, 240, 255, 0.12)',
+      boxShadow: isAdmin ? '0 4px 20px rgba(255, 0, 100, 0.15)' : 'none'
     }}>
+      {/* Admin Quick Action Overlay Toolbar */}
+      {isAdmin && (
+        <div style={{
+          backgroundColor: '#160814',
+          borderBottom: '1px solid #ff0066',
+          padding: '0.4rem 0.8rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          zIndex: 10
+        }}>
+          <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#ff0066', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <ShieldAlert size={12} /> ADMIN CONTROLS
+          </span>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); onEditProduct(product); }}
+              title="Edit Product Details"
+              style={{
+                backgroundColor: 'rgba(0, 240, 255, 0.15)',
+                border: '1px solid #00f0ff',
+                color: '#00f0ff',
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                padding: '2px 8px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '3px'
+              }}
+            >
+              <Edit3 size={11} /> EDIT
+            </button>
+
+            <button
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                if (window.confirm(`Are you sure you want to delete "${product.name}"?`)) {
+                  onDeleteProduct(product.id);
+                }
+              }}
+              title="Delete Product"
+              style={{
+                backgroundColor: 'rgba(255, 0, 85, 0.15)',
+                border: '1px solid #ff0055',
+                color: '#ff0055',
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                padding: '2px 8px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '3px'
+              }}
+            >
+              <Trash2 size={11} /> DELETE
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Badges */}
       <div style={{
         position: 'absolute',
-        top: '12px',
+        top: isAdmin ? '44px' : '12px',
         left: '12px',
         right: '12px',
         display: 'flex',
@@ -58,14 +125,15 @@ export default function ProductCard({ product, onAddToCart, onQuickView }) {
         style={{
           position: 'relative',
           paddingTop: '65%',
-          backgroundColor: '#07080c',
+          backgroundColor: '#0c0f18',
+          overflow: 'hidden',
           cursor: 'pointer',
-          overflow: 'hidden'
+          marginTop: isAdmin ? '32px' : 0
         }}
       >
-        <img 
-          src={product.image} 
-          alt={product.name} 
+        <img
+          src={product.image}
+          alt={product.name}
           style={{
             position: 'absolute',
             top: 0,
@@ -73,90 +141,63 @@ export default function ProductCard({ product, onAddToCart, onQuickView }) {
             width: '100%',
             height: '100%',
             objectFit: 'cover',
-            transition: 'transform 0.4s ease'
+            transition: 'transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1)'
           }}
-          onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.08)'}
-          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          onError={(e) => {
+            e.target.src = 'https://images.unsplash.com/photo-1587202372775-e229f172b9d7?auto=format&fit=crop&w=800&q=80';
+          }}
         />
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'linear-gradient(180deg, transparent 60%, rgba(14, 17, 26, 0.9) 100%)'
-        }} />
       </div>
 
-      {/* Product Information Body */}
-      <div style={{ padding: '1.2rem', display: 'flex', flexDirection: 'column', flex: 1 }}>
-        {/* Brand & Category */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '0.4rem'
-        }}>
-          <span style={{
-            fontSize: '0.72rem',
-            fontWeight: 800,
-            color: '#00f0ff',
-            fontFamily: 'var(--font-heading)',
-            letterSpacing: '1px'
-          }}>
-            {product.brand}
+      {/* Card Content Body */}
+      <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+          <span style={{ fontSize: '0.72rem', color: '#00f0ff', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px' }}>
+            {product.brand || product.category}
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-            <Star size={12} color="#ffaa00" fill="#ffaa00" />
-            <span style={{ fontSize: '0.78rem', color: '#fff', fontWeight: 700, fontFamily: 'var(--font-stats)' }}>
-              {product.rating}
-            </span>
-            <span style={{ fontSize: '0.72rem', color: '#5c687e' }}>
-              ({product.reviewsCount})
-            </span>
+            <Star size={12} fill="#ffb700" color="#ffb700" />
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#fff' }}>{product.rating || '4.9'}</span>
+            <span style={{ fontSize: '0.7rem', color: '#5c687e' }}>({product.reviewsCount || 12})</span>
           </div>
         </div>
 
-        {/* Title */}
         <h3 
           onClick={() => onQuickView(product)}
           style={{
-            fontSize: '0.98rem',
+            fontSize: '0.95rem',
             fontWeight: 700,
             color: '#fff',
-            lineHeight: 1.35,
-            marginBottom: '0.8rem',
+            lineHeight: '1.35',
+            margin: '0 0 0.6rem 0',
             cursor: 'pointer',
-            height: '2.7em',
-            overflow: 'hidden',
             display: '-webkit-box',
             WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical'
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden'
           }}
-          onMouseEnter={(e) => e.currentTarget.style.color = '#00f0ff'}
-          onMouseLeave={(e) => e.currentTarget.style.color = '#fff'}
         >
           {product.name}
         </h3>
 
-        {/* Highlight Specs Chips */}
-        <div style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '4px',
-          marginBottom: '1rem'
-        }}>
-          {Object.entries(product.specs).slice(0, 2).map(([key, val]) => (
-            <span key={key} style={{
-              backgroundColor: '#121624',
-              color: '#8e9bb0',
-              fontSize: '0.7rem',
-              padding: '2px 7px',
-              borderRadius: '4px',
-              border: '1px solid rgba(255, 255, 255, 0.05)',
-              fontFamily: 'var(--font-stats)'
-            }}>
-              {val}
-            </span>
-          ))}
-        </div>
+        {/* Quick Specs Snippets */}
+        {product.specs && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '1rem' }}>
+            {Object.values(product.specs).slice(0, 2).map((val, idx) => (
+              <span key={idx} style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                color: '#8e9bb0',
+                fontSize: '0.7rem',
+                padding: '2px 7px',
+                borderRadius: '4px',
+                border: '1px solid rgba(255, 255, 255, 0.05)',
+                fontFamily: 'var(--font-stats)'
+              }}>
+                {val}
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Price & Action Row */}
         <div style={{
@@ -175,7 +216,7 @@ export default function ProductCard({ product, onAddToCart, onQuickView }) {
                 color: '#fff',
                 fontFamily: 'var(--font-stats)'
               }}>
-                ${product.price.toFixed(2)}
+                ${typeof product.price === 'number' ? product.price.toFixed(2) : product.price}
               </span>
               {product.originalPrice && (
                 <span style={{
@@ -184,7 +225,7 @@ export default function ProductCard({ product, onAddToCart, onQuickView }) {
                   textDecoration: 'line-through',
                   fontFamily: 'var(--font-stats)'
                 }}>
-                  ${product.originalPrice.toFixed(2)}
+                  ${typeof product.originalPrice === 'number' ? product.originalPrice.toFixed(2) : product.originalPrice}
                 </span>
               )}
             </div>
@@ -206,14 +247,6 @@ export default function ProductCard({ product, onAddToCart, onQuickView }) {
                 justifyContent: 'center',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = '#00f0ff';
-                e.currentTarget.style.color = '#00f0ff';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-                e.currentTarget.style.color = '#8e9bb0';
               }}
             >
               <Eye size={16} />
@@ -239,8 +272,6 @@ export default function ProductCard({ product, onAddToCart, onQuickView }) {
                 transition: 'all 0.2s ease',
                 boxShadow: '0 4px 12px rgba(0, 240, 255, 0.3)'
               }}
-              onMouseEnter={(e) => e.currentTarget.style.filter = 'brightness(1.15)'}
-              onMouseLeave={(e) => e.currentTarget.style.filter = 'brightness(1)'}
             >
               <ShoppingCart size={15} />
               <span>ADD</span>
