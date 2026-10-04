@@ -12,21 +12,25 @@ import ProductDetailsPage from './components/ProductDetailsPage';
 import CartDrawer from './components/CartDrawer';
 import AuthModal from './components/AuthModal';
 import AdminProductModal from './components/AdminProductModal';
+import UserOrdersModal from './components/UserOrdersModal';
+import AdminOrdersModal from './components/AdminOrdersModal';
 import Toast from './components/Toast';
 
 import { products as initialProductsData } from './data/products';
 
 export default function App() {
   const [allProducts, setAllProducts] = useState(initialProductsData);
-  const [cartItems, setCartItems] = useState([
-    { ...initialProductsData[0], quantity: 1 } // Pre-add RTX 4090 to demo cart badge
-  ]);
+  const [cartItems, setCartItems] = useState([]);
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [previousSection, setPreviousSection] = useState('catalog');
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isUserOrdersOpen, setIsUserOrdersOpen] = useState(false);
+  const [isAdminOrdersOpen, setIsAdminOrdersOpen] = useState(false);
+  const [authReason, setAuthReason] = useState('');
+  const [pendingAction, setPendingAction] = useState(null);
   
   // Admin & User Role Management
   const [user, setUser] = useState(null);
@@ -50,6 +54,30 @@ export default function App() {
       });
   }, []);
 
+  // Handle PayHere Payment Return Redirect URL parameters
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymentStatus = params.get('payment');
+    const orderId = params.get('orderId');
+
+    if (paymentStatus === 'success') {
+      setCartItems([]);
+      setToast({
+        type: 'auth',
+        title: 'PAYHERE PAYMENT CONFIRMED!',
+        message: `Your PayHere Sandbox order ${orderId ? `#${orderId}` : ''} has been confirmed!`
+      });
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (paymentStatus === 'cancel') {
+      setToast({
+        type: 'info',
+        title: 'PAYMENT CANCELLED',
+        message: 'PayHere Sandbox transaction was cancelled.'
+      });
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
   const handleOpenProductDetails = (product) => {
     setSelectedProduct(product);
     if (activeSection !== 'product-details') {
@@ -59,22 +87,23 @@ export default function App() {
   };
 
   // Cart Handlers
-  const handleAddToCart = (product) => {
+  const handleAddToCart = (product, qty = 1) => {
     setCartItems((prevItems) => {
       const existing = prevItems.find((item) => item.id === product.id);
       if (existing) {
         return prevItems.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          item.id === product.id ? { ...item, quantity: item.quantity + qty } : item
         );
       }
-      return [...prevItems, { ...product, quantity: 1 }];
+      return [...prevItems, { ...product, quantity: qty }];
     });
 
     setToast({
       type: 'cart',
       title: 'ADDED TO CART',
-      message: `${product.name} has been added!`
+      message: `${product.name} ${qty > 1 ? `(${qty}x)` : ''} has been added!`
     });
+    return true;
   };
 
   const handleAddBuildToCart = (buildItems) => {
@@ -99,6 +128,7 @@ export default function App() {
       title: 'CUSTOM BUILD ADDED',
       message: `All ${buildItems.length} build components added to your cart!`
     });
+    return true;
   };
 
   const handleUpdateQuantity = (productId, delta) => {
@@ -140,6 +170,64 @@ export default function App() {
       title: `LOGGED IN AS ${userProfile.role.toUpperCase()}`,
       message: `Welcome back, ${userProfile.name}! (${userProfile.role === 'admin' ? 'Full Admin CRUD Enabled' : 'User Browse & Search Mode'})`
     });
+
+    // Execute pending action if user tried to add to cart or purchase before signing in
+    if (pendingAction) {
+      if (pendingAction.type === 'addToCart' && pendingAction.product) {
+        const qty = pendingAction.quantity || 1;
+        setCartItems((prevItems) => {
+          const existing = prevItems.find((item) => item.id === pendingAction.product.id);
+          if (existing) {
+            return prevItems.map((item) =>
+              item.id === pendingAction.product.id ? { ...item, quantity: item.quantity + qty } : item
+            );
+          }
+          return [...prevItems, { ...pendingAction.product, quantity: qty }];
+        });
+        setToast({
+          type: 'cart',
+          title: 'ADDED TO CART',
+          message: `${pendingAction.product.name} has been added to your cart!`
+        });
+      } else if (pendingAction.type === 'addBuildToCart' && pendingAction.buildItems) {
+        setCartItems((prev) => {
+          let updated = [...prev];
+          pendingAction.buildItems.forEach((part) => {
+            const existing = updated.find((item) => item.id === part.id);
+            if (existing) {
+              updated = updated.map((item) =>
+                item.id === part.id ? { ...item, quantity: item.quantity + 1 } : item
+              );
+            } else {
+              updated.push({ ...part, quantity: 1 });
+            }
+          });
+          return updated;
+        });
+        setIsCartOpen(true);
+        setToast({
+          type: 'cart',
+          title: 'CUSTOM BUILD ADDED',
+          message: `All ${pendingAction.buildItems.length} build components added to your cart!`
+        });
+      } else if (pendingAction.type === 'buyNow' && pendingAction.product) {
+        const qty = pendingAction.quantity || 1;
+        setCartItems((prevItems) => {
+          const existing = prevItems.find((item) => item.id === pendingAction.product.id);
+          if (existing) {
+            return prevItems.map((item) =>
+              item.id === pendingAction.product.id ? { ...item, quantity: item.quantity + qty } : item
+            );
+          }
+          return [...prevItems, { ...pendingAction.product, quantity: qty }];
+        });
+        setIsCartOpen(true);
+      } else if (pendingAction.type === 'checkout') {
+        setIsCartOpen(true);
+      }
+      setPendingAction(null);
+    }
+    setAuthReason('');
   };
 
   const handleLogout = () => {
@@ -249,6 +337,8 @@ export default function App() {
         onOpenAuth={() => setIsAuthOpen(true)}
         onLogout={handleLogout}
         onOpenAddProductModal={handleOpenAddProduct}
+        onOpenUserOrders={() => setIsUserOrdersOpen(true)}
+        onOpenAdminOrders={() => setIsAdminOrdersOpen(true)}
         activeSection={activeSection}
         setActiveSection={setActiveSection}
       />
@@ -349,6 +439,17 @@ export default function App() {
           <ProductDetailsPage
             product={selectedProduct}
             allProducts={allProducts}
+            user={user}
+            onOpenAuth={(reason, action) => {
+              if (reason) setAuthReason(reason);
+              if (action) setPendingAction(action);
+              setIsAuthOpen(true);
+              setToast({
+                type: 'auth',
+                title: 'SIGN IN REQUIRED',
+                message: 'Please sign in to complete your purchase!'
+              });
+            }}
             onBack={() => setActiveSection(previousSection || 'catalog')}
             onAddToCart={handleAddToCart}
             onViewProduct={handleOpenProductDetails}
@@ -365,6 +466,17 @@ export default function App() {
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
         cartItems={cartItems}
+        user={user}
+        onOpenAuth={(reason) => {
+          setAuthReason(reason || 'Please sign in or create an account to proceed to checkout.');
+          setPendingAction({ type: 'checkout' });
+          setIsAuthOpen(true);
+          setToast({
+            type: 'auth',
+            title: 'SIGN IN REQUIRED',
+            message: 'Please sign in to complete your purchase!'
+          });
+        }}
         onUpdateQuantity={handleUpdateQuantity}
         onRemoveItem={handleRemoveItem}
         onClearCart={handleClearCart}
@@ -374,7 +486,11 @@ export default function App() {
       {/* Auth & Role Selector Modal */}
       <AuthModal
         isOpen={isAuthOpen}
-        onClose={() => setIsAuthOpen(false)}
+        onClose={() => {
+          setIsAuthOpen(false);
+          setAuthReason('');
+        }}
+        authReason={authReason}
         onLoginSuccess={handleLoginSuccess}
       />
 
@@ -384,6 +500,19 @@ export default function App() {
         onClose={() => setIsAdminModalOpen(false)}
         onSaveProduct={handleSaveProduct}
         initialProduct={editingProduct}
+      />
+
+      {/* User My Orders & Status Modal */}
+      <UserOrdersModal
+        isOpen={isUserOrdersOpen}
+        onClose={() => setIsUserOrdersOpen(false)}
+        user={user}
+      />
+
+      {/* Admin Customer Purchases & Order Approvals Modal */}
+      <AdminOrdersModal
+        isOpen={isAdminOrdersOpen}
+        onClose={() => setIsAdminOrdersOpen(false)}
       />
 
       {/* Toast Notification System */}

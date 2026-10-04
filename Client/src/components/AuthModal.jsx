@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Lock, Mail, Gamepad2, ArrowRight, AlertCircle, User } from 'lucide-react';
 
-export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
+export default function AuthModal({ isOpen, onClose, onLoginSuccess, authReason }) {
   const [mode, setMode] = useState('login'); // 'login' or 'register'
   const [formData, setFormData] = useState({
     email: '',
@@ -115,7 +115,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
         </button>
 
         {/* Modal Header */}
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '1.2rem' }}>
           <div style={{
             width: '50px',
             height: '50px',
@@ -137,6 +137,27 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
             {mode === 'login' ? 'Enter your email and password to log in securely' : 'Fill in your details to create an account'}
           </p>
         </div>
+
+        {/* Auth Reason Notice Banner */}
+        {authReason && (
+          <div style={{
+            backgroundColor: 'rgba(0, 240, 255, 0.1)',
+            border: '1px solid rgba(0, 240, 255, 0.4)',
+            color: '#00f0ff',
+            padding: '0.7rem 1rem',
+            borderRadius: '10px',
+            fontSize: '0.82rem',
+            fontWeight: 700,
+            marginBottom: '1.2rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.6rem',
+            lineHeight: 1.35
+          }}>
+            <Lock size={18} color="#00f0ff" style={{ flexShrink: 0 }} />
+            <span>{authReason}</span>
+          </div>
+        )}
 
         {/* Error Alert */}
         {errorMessage && (

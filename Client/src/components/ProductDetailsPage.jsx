@@ -8,6 +8,8 @@ import ProductCard from './ProductCard';
 export default function ProductDetailsPage({ 
   product, 
   allProducts, 
+  user,
+  onOpenAuth,
   onBack, 
   onAddToCart, 
   onViewProduct, 
@@ -19,13 +21,77 @@ export default function ProductDetailsPage({
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // MongoDB Live Reviews State
+  const [reviewsList, setReviewsList] = useState(product?.reviews || []);
+  const [currentRating, setCurrentRating] = useState(product?.rating || 5.0);
+  const [currentReviewsCount, setCurrentReviewsCount] = useState(product?.reviewsCount || (product?.reviews ? product.reviews.length : 0));
+
+  // Review Form State
+  const [newRating, setNewRating] = useState(5);
+  const [newReviewTitle, setNewReviewTitle] = useState('');
+  const [newReviewComment, setNewReviewComment] = useState('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [reviewNotice, setReviewNotice] = useState('');
+
   useEffect(() => {
     if (product) {
       setSelectedImage(product.image);
       setQuantity(1);
       window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      // Fetch live product details and reviews directly from MongoDB
+      fetch(`http://localhost:3000/api/products/${product.id}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.reviews) {
+            setReviewsList(data.reviews);
+            setCurrentRating(data.rating || 5.0);
+            setCurrentReviewsCount(data.reviewsCount || data.reviews.length);
+          }
+        })
+        .catch(err => {
+          console.log('MongoDB live product details fetch fallback:', err.message);
+        });
     }
   }, [product]);
+
+  const handleAddReview = async (e) => {
+    e.preventDefault();
+    if (!newReviewComment.trim()) return;
+
+    setIsSubmittingReview(true);
+    setReviewNotice('');
+
+    try {
+      const res = await fetch(`http://localhost:3000/api/products/${product.id}/reviews`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userName: user?.name || 'Gamer Customer',
+          userEmail: user?.email || '',
+          rating: newRating,
+          title: newReviewTitle.trim() || 'Awesome Gaming Part',
+          comment: newReviewComment.trim()
+        })
+      });
+
+      const data = await res.json();
+      if (data.success && data.product) {
+        setReviewsList(data.product.reviews || []);
+        setCurrentRating(data.product.rating);
+        setCurrentReviewsCount(data.product.reviewsCount);
+        setNewReviewTitle('');
+        setNewReviewComment('');
+        setReviewNotice('✓ Review saved to MongoDB database successfully!');
+        setTimeout(() => setReviewNotice(''), 4000);
+      }
+    } catch (err) {
+      console.error('Failed to save review in MongoDB:', err.message);
+      setReviewNotice('Local fallback review submitted.');
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
 
   if (!product) return null;
 
@@ -551,9 +617,7 @@ export default function ProductDetailsPage({
                 {/* Add to Cart Button */}
                 <button
                   onClick={() => {
-                    for (let i = 0; i < quantity; i++) {
-                      onAddToCart(product);
-                    }
+                    onAddToCart(product, quantity);
                   }}
                   className="btn-primary"
                   style={{
@@ -571,10 +635,14 @@ export default function ProductDetailsPage({
               {/* Buy Now Instant Checkout Button */}
               <button
                 onClick={() => {
-                  for (let i = 0; i < quantity; i++) {
-                    onAddToCart(product);
+                  if (!user && onOpenAuth) {
+                    onOpenAuth(`Please sign in or create an account to buy ${product.name} instantly.`, { type: 'buyNow', product, quantity });
+                    return;
                   }
-                  if (onOpenCart) onOpenCart();
+                  const success = onAddToCart(product, quantity);
+                  if (success !== false && onOpenCart) {
+                    onOpenCart();
+                  }
                 }}
                 style={{
                   backgroundColor: '#151a28',
@@ -783,10 +851,10 @@ export default function ProductDetailsPage({
               }}>
                 <div>
                   <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '0.3rem' }}>
-                    Verified Gamer Feedback
+                    Verified Gamer Feedback (Stored in MongoDB)
                   </h3>
                   <p style={{ color: '#8e9bb0', fontSize: '0.88rem' }}>
-                    Based on {product.reviewsCount} verified purchase reviews
+                    Based on {currentReviewsCount} verified purchase reviews
                   </p>
                 </div>
 
@@ -799,12 +867,12 @@ export default function ProductDetailsPage({
                   borderRadius: '12px'
                 }}>
                   <span style={{ fontSize: '2rem', fontWeight: 900, color: '#ffaa00', fontFamily: 'var(--font-stats)' }}>
-                    {product.rating}
+                    {currentRating}
                   </span>
                   <div>
                     <div style={{ display: 'flex', gap: '2px' }}>
                       {[...Array(5)].map((_, i) => (
-                        <Star key={i} size={14} color="#ffaa00" fill="#ffaa00" />
+                        <Star key={i} size={14} color="#ffaa00" fill={i < Math.floor(currentRating) ? "#ffaa00" : "none"} />
                       ))}
                     </div>
                     <span style={{ fontSize: '0.75rem', color: '#8e9bb0' }}>Overall Score</span>
@@ -812,46 +880,146 @@ export default function ProductDetailsPage({
                 </div>
               </div>
 
-              {/* Sample Reviews */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {[
-                  { name: 'Alex V.', rating: 5, date: '2 days ago', title: 'Absolute performance beast!', comment: 'Easily handles 4K ultra settings with insane framerates. Temps stay under 65C even during heavy gaming.' },
-                  { name: 'Marcus T.', rating: 5, date: '1 week ago', title: 'Solid build quality & fast delivery', comment: 'Ordered yesterday and received it within 24 hours. Packaging was pristine and sealed. Highly recommended!' }
-                ].map((rev, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      backgroundColor: '#121624',
-                      padding: '1.2rem',
-                      borderRadius: '12px',
-                      border: '1px solid rgba(255, 255, 255, 0.05)'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                        <span style={{ fontWeight: 700, color: '#fff', fontSize: '0.9rem' }}>{rev.name}</span>
-                        <span style={{
-                          backgroundColor: 'rgba(0, 255, 102, 0.1)',
-                          color: '#00ff66',
-                          fontSize: '0.68rem',
-                          padding: '1px 6px',
-                          borderRadius: '4px',
-                          fontWeight: 700
-                        }}>VERIFIED BUYER</span>
-                      </div>
-                      <span style={{ fontSize: '0.78rem', color: '#5c687e' }}>{rev.date}</span>
-                    </div>
+              {/* Submit New Review Form */}
+              <div style={{
+                backgroundColor: '#121624',
+                padding: '1.4rem',
+                borderRadius: '12px',
+                border: '1px solid rgba(0, 240, 255, 0.2)',
+                marginBottom: '2rem'
+              }}>
+                <h4 style={{ color: '#fff', fontSize: '1rem', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <MessageSquare size={16} color="#00f0ff" />
+                  WRITE A GAMER REVIEW
+                </h4>
 
-                    <div style={{ display: 'flex', gap: '2px', marginBottom: '0.5rem' }}>
-                      {[...Array(rev.rating)].map((_, i) => (
-                        <Star key={i} size={12} color="#ffaa00" fill="#ffaa00" />
+                {reviewNotice && (
+                  <div style={{
+                    backgroundColor: 'rgba(0, 255, 102, 0.15)',
+                    border: '1px solid #00ff66',
+                    color: '#00ff66',
+                    padding: '0.6rem 0.9rem',
+                    borderRadius: '8px',
+                    fontSize: '0.82rem',
+                    marginBottom: '1rem'
+                  }}>
+                    {reviewNotice}
+                  </div>
+                )}
+
+                <form onSubmit={handleAddReview} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#8e9bb0' }}>Your Rating:</span>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setNewRating(star)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                        >
+                          <Star
+                            size={20}
+                            color="#ffaa00"
+                            fill={star <= newRating ? "#ffaa00" : "none"}
+                          />
+                        </button>
                       ))}
                     </div>
-
-                    <h4 style={{ color: '#fff', fontSize: '0.92rem', marginBottom: '0.3rem' }}>{rev.title}</h4>
-                    <p style={{ color: '#8e9bb0', fontSize: '0.85rem' }}>{rev.comment}</p>
                   </div>
-                ))}
+
+                  <input
+                    type="text"
+                    placeholder="Review Title (e.g., Extreme Performance & Low Temps!)"
+                    value={newReviewTitle}
+                    onChange={(e) => setNewReviewTitle(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.65rem 0.9rem',
+                      backgroundColor: '#0c0f18',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      fontSize: '0.85rem',
+                      outline: 'none'
+                    }}
+                  />
+
+                  <textarea
+                    rows={3}
+                    placeholder="Write your detailed review comment here..."
+                    value={newReviewComment}
+                    onChange={(e) => setNewReviewComment(e.target.value)}
+                    required
+                    style={{
+                      width: '100%',
+                      padding: '0.65rem 0.9rem',
+                      backgroundColor: '#0c0f18',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      fontSize: '0.85rem',
+                      outline: 'none',
+                      resize: 'vertical'
+                    }}
+                  />
+
+                  <button
+                    type="submit"
+                    disabled={isSubmittingReview}
+                    className="btn-primary"
+                    style={{ alignSelf: 'flex-start', padding: '0.6rem 1.2rem', fontSize: '0.85rem' }}
+                  >
+                    <span>{isSubmittingReview ? 'SUBMITTING TO MONGODB...' : 'POST REVIEW TO MONGODB'}</span>
+                  </button>
+                </form>
+              </div>
+
+              {/* Reviews List */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {reviewsList.length > 0 ? (
+                  reviewsList.map((rev, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        backgroundColor: '#121624',
+                        padding: '1.2rem',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(255, 255, 255, 0.05)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                          <span style={{ fontWeight: 700, color: '#fff', fontSize: '0.9rem' }}>{rev.userName || rev.name || 'Gamer'}</span>
+                          <span style={{
+                            backgroundColor: 'rgba(0, 255, 102, 0.1)',
+                            color: '#00ff66',
+                            fontSize: '0.68rem',
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            fontWeight: 700
+                          }}>VERIFIED BUYER</span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#5c687e' }}>
+                          {rev.createdAt ? new Date(rev.createdAt).toLocaleDateString() : rev.date || 'Recently'}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '2px', marginBottom: '0.5rem' }}>
+                        {[...Array(rev.rating || 5)].map((_, i) => (
+                          <Star key={i} size={12} color="#ffaa00" fill="#ffaa00" />
+                        ))}
+                      </div>
+
+                      <h4 style={{ color: '#fff', fontSize: '0.92rem', marginBottom: '0.3rem' }}>{rev.title}</h4>
+                      <p style={{ color: '#8e9bb0', fontSize: '0.85rem' }}>{rev.comment}</p>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ color: '#8e9bb0', fontSize: '0.85rem', textAlign: 'center', padding: '2rem 0' }}>
+                    No reviews yet. Be the first gamer to post a review for this product!
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShoppingBag, Search, Wrench, Heart, Zap, Menu, X, ShieldCheck, User, LogOut, Plus, Crown } from 'lucide-react';
+import { ShoppingBag, Search, Wrench, Heart, Zap, Menu, X, ShieldCheck, User, LogOut, Plus, Crown, PackageCheck } from 'lucide-react';
 
 export default function Navbar({
   cartCount,
@@ -14,6 +14,8 @@ export default function Navbar({
   onOpenAuth,
   onLogout,
   onOpenAddProductModal,
+  onOpenUserOrders,
+  onOpenAdminOrders,
   activeSection,
   setActiveSection
 }) {
@@ -71,11 +73,11 @@ export default function Navbar({
           {/* Center Section: GAMER SHOP Title */}
           <div
             onClick={() => setActiveSection('home')}
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              gap: '0.8rem', 
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.8rem',
               cursor: 'pointer',
               textAlign: 'center'
             }}
@@ -115,28 +117,77 @@ export default function Navbar({
 
           {/* Right Section: Upper Action Buttons */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.8rem', flex: 1 }}>
-            {/* Admin Add Product Button (Only visible for Admins) */}
+            {/* Admin Controls (Only visible for Admins) */}
             {isAdmin && (
+              <>
+                <button
+                  onClick={onOpenAddProductModal}
+                  style={{
+                    background: 'linear-gradient(135deg, #ff0066 0%, #7000ff 100%)',
+                    border: 'none',
+                    color: '#fff',
+                    borderRadius: '12px',
+                    padding: '0.6rem 0.9rem',
+                    fontSize: '0.8rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    fontFamily: "'Orbitron', sans-serif",
+                    boxShadow: '0 4px 15px rgba(255, 0, 100, 0.4)'
+                  }}
+                >
+                  <Plus size={16} />
+                  <span>+ ADD PRODUCT</span>
+                </button>
+
+                <button
+                  onClick={onOpenAdminOrders}
+                  style={{
+                    background: 'rgba(255, 0, 85, 0.15)',
+                    border: '1px solid #ff0055',
+                    color: '#ff0055',
+                    borderRadius: '12px',
+                    padding: '0.6rem 0.9rem',
+                    fontSize: '0.8rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    fontFamily: "'Orbitron', sans-serif",
+                    boxShadow: '0 0 12px rgba(255, 0, 85, 0.3)'
+                  }}
+                  title="View customer purchases and approve orders"
+                >
+                  <ShieldCheck size={16} />
+                  <span>APPROVE ORDERS</span>
+                </button>
+              </>
+            )}
+
+            {/* User My Orders Button */}
+            {user && (
               <button
-                onClick={onOpenAddProductModal}
+                onClick={onOpenUserOrders}
                 style={{
-                  background: 'linear-gradient(135deg, #ff0066 0%, #7000ff 100%)',
-                  border: 'none',
-                  color: '#fff',
+                  background: 'rgba(0, 240, 255, 0.1)',
+                  border: '1px solid rgba(0, 240, 255, 0.3)',
+                  color: '#00f0ff',
                   borderRadius: '12px',
-                  padding: '0.6rem 1rem',
-                  fontSize: '0.82rem',
-                  fontWeight: 800,
+                  padding: '0.55rem 0.9rem',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.4rem',
-                  fontFamily: "'Orbitron', sans-serif",
-                  boxShadow: '0 4px 15px rgba(255, 0, 100, 0.4)'
+                  gap: '0.4rem'
                 }}
+                title="View your purchases and placement status"
               >
-                <Plus size={16} />
-                <span>+ ADD PRODUCT</span>
+                <PackageCheck size={16} />
+                <span>MY ORDERS</span>
               </button>
             )}
 
