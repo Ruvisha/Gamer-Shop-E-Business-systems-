@@ -512,8 +512,8 @@ app.delete("/api/products/:id", async (req, res) => {
 // ==========================================
 // PAYHERE SANDBOX PAYMENT GATEWAY ENDPOINTS
 // ==========================================
-const PAYHERE_MERCHANT_ID = process.env.PAYHERE_MERCHANT_ID || "1238431";
-const PAYHERE_MERCHANT_SECRET = process.env.PAYHERE_MERCHANT_SECRET || "Mzc4NDg5NDczNDIzNzk5ODY1ODY1MTc0NjE2ODAyOTgyNTMwNjMx";
+const PAYHERE_MERCHANT_ID = process.env.PAYHERE_MERCHANT_ID || "1238556";
+const PAYHERE_MERCHANT_SECRET = process.env.PAYHERE_MERCHANT_SECRET || 'NDE2OTc1MTU3NDE1MDk4MDc5MTM2MzU2MjkwMjM4ODY1NDg2MDU=';
 const PAYHERE_CURRENCY = process.env.PAYHERE_CURRENCY || "LKR";
 
 function generatePayHereHash(merchantId, orderId, amount, currency, merchantSecret) {
@@ -535,7 +535,7 @@ app.post("/api/payment/checkout-data", async (req, res) => {
     const orderId = `#${Math.floor(100000000000 + Math.random() * 900000000000)}`;
     const formattedAmount = Number(amount).toFixed(2);
     const currency = PAYHERE_CURRENCY;
-    const hash = generatePayHereHash(PAYHERE_MERCHANT_ID, orderId, formattedAmount, currency, PAYHERE_MERCHANT_SECRET);
+const hash = generatePayHereHash(PAYHERE_MERCHANT_ID, orderId, formattedAmount, currency, PAYHERE_MERCHANT_SECRET);
 
     const deliveryInfo = {
       fullName: customerDetails.fullName || userName,
@@ -582,7 +582,7 @@ app.post("/api/payment/checkout-data", async (req, res) => {
       success: true,
       sandboxUrl: "https://sandbox.payhere.lk/pay/checkout",
       merchantId: PAYHERE_MERCHANT_ID,
-      merchantSecret: PAYHERE_MERCHANT_SECRET,
+merchantSecret: PAYHERE_MERCHANT_SECRET,
       orderId,
       items: itemSummary,
       currency,
@@ -622,7 +622,7 @@ app.post("/api/payment/notify", async (req, res) => {
 
     console.log(`[PayHere IPN Received] Order: ${order_id}, Status Code: ${status_code}, Amount: ${payhere_amount}`);
 
-    const hashedSecret = crypto.createHash("md5").update(PAYHERE_MERCHANT_SECRET).digest("hex").toUpperCase();
+const PAYHERE_MERCHANT_SECRET = process.env.PAYHERE_MERCHANT_SECRET || 'NDE2OTc1MTU3NDE1MDk4MDc5MTM2MzU2MjkwMjM4ODY1NDg2MDU=';
     const hashString = merchant_id + order_id + payhere_amount + payhere_currency + status_code + hashedSecret;
     const expectedHash = crypto.createHash("md5").update(hashString).digest("hex").toUpperCase();
 

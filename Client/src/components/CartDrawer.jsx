@@ -547,7 +547,7 @@ export default function CartDrawer({
                     GAMER SHOP • PAYHERE CHECKOUT
                   </h3>
                   <span style={{ fontSize: '0.72rem', color: '#60a5fa' }}>
-                    Merchant ID: 1238431 • Currency: LKR
+                    Merchant ID: 1238556 • Currency: LKR
                   </span>
                 </div>
               </div>
@@ -585,6 +585,24 @@ export default function CartDrawer({
               </div>
             </div>
 
+            {/* PayHere Maximum Payment Limit Warning Banner */}
+            {Number(finalTotalLKR) > 50000 && (
+              <div style={{
+                backgroundColor: 'rgba(234, 179, 8, 0.15)',
+                border: '1px solid #eab308',
+                borderRadius: '10px',
+                padding: '0.8rem 1rem',
+                marginBottom: '1rem',
+                fontSize: '0.78rem',
+                color: '#fef08a'
+              }}>
+                <strong style={{ color: '#eab308', display: 'block', marginBottom: '2px' }}>
+                  ⚠️ PAYHERE TRANSACTION LIMIT EXCEEDED (MAX RS. 50,000 / PAYMENT)
+                </strong>
+                PayHere Lite / Sandbox default accounts cap single payments at <strong>Rs. 50,000.00</strong>. Your cart total is <strong>LKR {Number(finalTotalLKR).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>. To test payment, please select an item under Rs. 50,000 or reduce cart quantity.
+              </div>
+            )}
+
             {/* Environment Protocol Warning Banner */}
             {typeof window !== 'undefined' && window.location.protocol === 'file:' && (
               <div style={{
@@ -620,7 +638,7 @@ export default function CartDrawer({
                 To prevent <strong>"Unauthorized payment request"</strong> errors on PayHere Sandbox:
                 <ul style={{ margin: '4px 0 0 1.2rem', padding: 0 }}>
                   <li>Ensure your Merchant Integration type in PayHere Portal is set as <strong>Domain</strong> (globe icon for <code>localhost</code>), NOT an <strong>App</strong>.</li>
-                  <li>Merchant ID: <code>1238431</code> • Currency: <code>LKR</code> (strictly 2 decimal places e.g., <code>1000.00</code>).</li>
+                  <li>Merchant ID: <code>1238556</code> • Currency: <code>LKR</code> (strictly 2 decimal places e.g., <code>1000.00</code>).</li>
                   <li>Security Hash: <code>UPPERCASE(MD5(merchant_id + order_id + amount + currency + UPPERCASE(MD5(merchant_secret))))</code></li>
                 </ul>
               </div>
