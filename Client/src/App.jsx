@@ -42,16 +42,28 @@ export default function App() {
 
   // Fetch product list from backend API on mount
   useEffect(() => {
-    fetch('http://localhost:3000/api/products')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          setAllProducts(data);
+    const fetchProducts = async () => {
+      try {
+        let res = await fetch('/api/products').catch(() => null);
+        if (!res || !res.ok) {
+          res = await fetch('http://localhost:3000/api/products').catch(() => null);
         }
-      })
-      .catch(err => {
+        if (res && res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            const normalized = data.map(p => ({
+              ...p,
+              image: p.image || `/api/images/${p.id}`,
+              fallbackImage: p.fallbackImage || `/images/${p.id}.jpg`
+            }));
+            setAllProducts(normalized);
+          }
+        }
+      } catch (err) {
         console.log('Using local fallback product dataset:', err);
-      });
+      }
+    };
+    fetchProducts();
   }, []);
 
   // Handle PayHere Payment Return Redirect URL parameters

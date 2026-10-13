@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShieldCheck, CheckCircle2, Clock, Truck, RefreshCw, XCircle, DollarSign, User, MapPin, Phone, Mail, ShoppingBag } from 'lucide-react';
+import { X, ShieldCheck, CheckCircle2, Clock, Truck, RefreshCw, XCircle, DollarSign, CreditCard, User, MapPin, Phone, Mail, ShoppingBag } from 'lucide-react';
 
 export default function AdminOrdersModal({ isOpen, onClose }) {
   const [orders, setOrders] = useState([]);
@@ -270,10 +270,10 @@ export default function AdminOrdersModal({ isOpen, onClose }) {
 
                       <div>
                         <div style={{ fontSize: '0.75rem', color: '#ff0055', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
-                          <DollarSign size={13} /> PAYMENT & TOTAL
+                          <CreditCard size={13} /> PAYMENT & TOTAL
                         </div>
                         <div style={{ fontSize: '1rem', fontWeight: 900, color: '#00f0ff' }}>
-                          Rs. {(ord.amountLKR || 0).toLocaleString()} <span style={{ fontSize: '0.75rem', color: '#8e9bb0' }}>(${(ord.amountUSD || 0).toLocaleString()})</span>
+                          Rs. {Number(ord.amountLKR || 0).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
                         {ord.payherePaymentId && (
                           <div style={{ fontSize: '0.7rem', color: '#00e699', fontFamily: 'monospace' }}>
@@ -300,14 +300,23 @@ export default function AdminOrdersModal({ isOpen, onClose }) {
                               borderRadius: '6px'
                             }}
                           >
-                            {itm.image && (
-                              <img src={itm.image} alt={itm.title} style={{ width: '28px', height: '28px', objectFit: 'cover', borderRadius: '4px' }} />
-                            )}
+                              <img 
+                                src={itm.image} 
+                                alt={itm.title} 
+                                onError={(e) => {
+                                  e.currentTarget.onerror = null;
+                                  const fallback = itm.fallbackImage || `/images/${itm.id}.jpg`;
+                                  if (e.currentTarget.src !== fallback && !e.currentTarget.src.endsWith(fallback)) {
+                                    e.currentTarget.src = fallback;
+                                  }
+                                }}
+                                style={{ width: '28px', height: '28px', objectFit: 'cover', borderRadius: '4px' }} 
+                              />
                             <div style={{ fontSize: '0.75rem', color: '#fff' }}>
                               <span style={{ fontWeight: 700 }}>{itm.title}</span> <span style={{ color: '#ff0055' }}>x{itm.quantity || 1}</span>
                             </div>
                             <div style={{ fontSize: '0.7rem', color: '#00f0ff', marginLeft: 'auto' }}>
-                              Rs. {(itm.priceLKR || 0).toLocaleString()}
+                              Rs. {Number((itm.price ? itm.price * (itm.quantity || 1) : itm.priceLKR) || 0).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </div>
                           </div>
                         ))}

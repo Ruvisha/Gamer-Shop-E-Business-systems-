@@ -16,8 +16,8 @@ export default function Hero({ onExploreClick, onBuilderClick }) {
       title: "NEXT-GEN 4K GAMING POWERHOUSE.",
       subtitle: 'NVIDIA GeForce RTX 5090 OC 32GB GDDR7X',
       description: 'Engineered for extreme 4K 240Hz ray tracing, advanced AI frame generation, and liquid-cooled thermal efficiency. Available for immediate dispatch.',
-      image: 'https://images.unsplash.com/photo-1587202372775-e229f172b9d7?auto=format&fit=crop&w=1200&q=80',
-      fallbackImage: '/msig1.jpg',
+      image: '/api/images/gpu-1',
+      fallbackImage: '/images/gpu-1.jpg',
       specs: [
         { label: 'BOOST CLOCK', value: '2.90 GHz' },
         { label: 'VRAM MEMORY', value: '32GB GDDR7X' },
@@ -37,8 +37,8 @@ export default function Hero({ onExploreClick, onBuilderClick }) {
       title: 'DESIGN YOUR ULTIMATE GAMING RIG.',
       subtitle: 'Interactive Custom PC Configurator',
       description: 'Select matching CPUs, liquid cooling, DDR5 RAM, and high-wattage PSUs with instant wattage & compatibility verification.',
-      image: 'https://images.unsplash.com/photo-1587202372634-32705e3bf49c?auto=format&fit=crop&w=1200&q=80',
-      fallbackImage: '/gaminpc.jpg',
+      image: '/api/images/case-1',
+      fallbackImage: '/images/case-1.jpg',
       specs: [
         { label: 'COMPATIBILITY', value: '100% VERIFIED' },
         { label: 'POWER CHECK', value: 'AUTOMATIC' },
@@ -58,8 +58,8 @@ export default function Hero({ onExploreClick, onBuilderClick }) {
       title: 'UNBEATABLE SAVINGS ON HARDWARE.',
       subtitle: 'Top-Tier CPUs, Motherboards & Gen5 SSDs',
       description: 'Upgrade your battle station with up to 30% off high-performance components. Limited inventory available with fast 24-hour shipping.',
-      image: 'https://images.unsplash.com/photo-1591488320449-011701bb6704?auto=format&fit=crop&w=1200&q=80',
-      fallbackImage: '/moandpo.jpg',
+      image: '/api/images/mb-1',
+      fallbackImage: '/images/mb-1.jpg',
       specs: [
         { label: 'MAX DISCOUNT', value: 'UP TO 30% OFF', valueColor: '#ff0055' },
         { label: 'EXPRESS SHIP', value: '24H DISPATCH' },
@@ -79,8 +79,8 @@ export default function Hero({ onExploreClick, onBuilderClick }) {
       title: 'MASTER-CRAFTED PRE-BUILT SYSTEMS.',
       subtitle: 'Hard-Line Liquid Cooled Gaming Rigs',
       description: 'Factory assembled, hand-tuned, and 24-hour stress tested for maximum FPS, zero thermal throttling, and whisper-quiet acoustics.',
-      image: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=1200&q=80',
-      fallbackImage: '/r9x3d.jpg',
+      image: '/api/images/cpu-1',
+      fallbackImage: '/images/cpu-1.jpg',
       specs: [
         { label: 'COOLING', value: 'HARD-LINE LIQUID' },
         { label: 'MEMORY', value: '64GB DDR5 6000' },

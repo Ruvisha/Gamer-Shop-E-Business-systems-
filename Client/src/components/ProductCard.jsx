@@ -144,7 +144,11 @@ export default function ProductCard({ product, onAddToCart, onQuickView, user, o
             transition: 'transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1)'
           }}
           onError={(e) => {
-            e.target.src = 'https://images.unsplash.com/photo-1587202372775-e229f172b9d7?auto=format&fit=crop&w=800&q=80';
+            e.currentTarget.onerror = null;
+            const fallback = product.fallbackImage || `/images/${product.id}.jpg`;
+            if (e.currentTarget.src !== fallback && !e.currentTarget.src.endsWith(fallback)) {
+              e.currentTarget.src = fallback;
+            }
           }}
         />
       </div>
@@ -216,7 +220,7 @@ export default function ProductCard({ product, onAddToCart, onQuickView, user, o
                 color: '#fff',
                 fontFamily: 'var(--font-stats)'
               }}>
-                ${typeof product.price === 'number' ? product.price.toFixed(2) : product.price}
+                Rs. {typeof product.price === 'number' ? Number(product.price).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : product.price}
               </span>
               {product.originalPrice && (
                 <span style={{
@@ -225,7 +229,7 @@ export default function ProductCard({ product, onAddToCart, onQuickView, user, o
                   textDecoration: 'line-through',
                   fontFamily: 'var(--font-stats)'
                 }}>
-                  ${typeof product.originalPrice === 'number' ? product.originalPrice.toFixed(2) : product.originalPrice}
+                  Rs. {typeof product.originalPrice === 'number' ? Number(product.originalPrice).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : product.originalPrice}
                 </span>
               )}
             </div>

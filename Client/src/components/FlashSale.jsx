@@ -123,12 +123,19 @@ export default function FlashSale({ onAddToCart, onQuickView }) {
                     marginBottom: '0.8rem',
                     fontFamily: 'var(--font-stats)'
                   }}>
-                    SAVE ${savings} NOW
+                    SAVE Rs. {Number(savings).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} NOW
                   </div>
 
                   <img 
                     src={product.image} 
                     alt={product.name}
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      const fallback = product.fallbackImage || `/images/${product.id}.jpg`;
+                      if (e.currentTarget.src !== fallback && !e.currentTarget.src.endsWith(fallback)) {
+                        e.currentTarget.src = fallback;
+                      }
+                    }}
                     style={{
                       width: '100%',
                       height: '160px',
@@ -169,10 +176,10 @@ export default function FlashSale({ onAddToCart, onQuickView }) {
                   {/* Price */}
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
                     <span style={{ fontSize: '1.3rem', fontWeight: 900, color: '#fff', fontFamily: 'var(--font-stats)' }}>
-                      ${product.price.toFixed(2)}
+                      Rs. {Number(product.price).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                     <span style={{ fontSize: '0.82rem', color: '#5c687e', textDecoration: 'line-through' }}>
-                      ${product.originalPrice.toFixed(2)}
+                      Rs. {Number(product.originalPrice).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
                 </div>

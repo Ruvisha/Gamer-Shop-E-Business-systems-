@@ -18,7 +18,7 @@ export default function ProductGrid({
 }) {
   // Multi-Criteria State
   const [selectedBrand, setSelectedBrand] = useState('all');
-  const [maxPrice, setMaxPrice] = useState(2500); // Price Range Adjustment Bar (slider max)
+  const [maxPrice, setMaxPrice] = useState(750000); // Price Range Adjustment Bar (slider max in Rs.)
   const [availability, setAvailability] = useState('all'); // all, instock, sale, featured
   const [minRating, setMinRating] = useState('all'); // all, 4.5, 4.8, 4.9
   const [sortBy, setSortBy] = useState('popular'); // popular, price-asc, price-desc, rating
@@ -77,7 +77,7 @@ export default function ProductGrid({
   const handleResetFilters = () => {
     setActiveCategory('all');
     setSelectedBrand('all');
-    setMaxPrice(2500);
+    setMaxPrice(750000);
     setAvailability('all');
     setMinRating('all');
     setSearchQuery('');
@@ -372,15 +372,15 @@ export default function ProductGrid({
                   padding: '2px 8px',
                   borderRadius: '6px'
                 }}>
-                  Under ${maxPrice.toLocaleString()}
+                  Under Rs. {maxPrice.toLocaleString()}
                 </span>
               </div>
 
               <input
                 type="range"
-                min="100"
-                max="2500"
-                step="50"
+                min="25000"
+                max="750000"
+                step="10000"
                 value={maxPrice}
                 onChange={(e) => setMaxPrice(Number(e.target.value))}
                 style={{
@@ -401,14 +401,14 @@ export default function ProductGrid({
                 marginTop: '0.3rem',
                 fontFamily: 'var(--font-stats)'
               }}>
-                <span>$100</span>
-                <span>$1,250</span>
-                <span>$2,500+</span>
+                <span>Rs. 25,000</span>
+                <span>Rs. 375,000</span>
+                <span>Rs. 750,000+</span>
               </div>
 
               {/* Quick Preset Buttons for Price Slider */}
               <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
-                {[300, 750, 1200, 2500].map((preset) => (
+                {[100000, 250000, 500000, 750000].map((preset) => (
                   <button
                     key={preset}
                     onClick={() => setMaxPrice(preset)}
@@ -425,7 +425,7 @@ export default function ProductGrid({
                       transition: 'all 0.15s ease'
                     }}
                   >
-                    {preset === 2500 ? 'All Prices' : `< $${preset}`}
+                    {preset === 750000 ? 'All Prices' : `< Rs. ${(preset / 1000).toLocaleString()}k`}
                   </button>
                 ))}
               </div>

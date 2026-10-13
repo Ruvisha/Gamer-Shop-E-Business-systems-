@@ -182,13 +182,24 @@ export default function UserOrdersModal({ isOpen, onClose, user }) {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginBottom: '1rem' }}>
                     {ord.items && ord.items.map((item, i) => (
                       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', backgroundColor: '#070912', padding: '0.5rem 0.8rem', borderRadius: '8px' }}>
-                        <img src={item.image} alt={item.name} style={{ width: '42px', height: '42px', objectFit: 'cover', borderRadius: '4px' }} />
+                        <img 
+                          src={item.image} 
+                          alt={item.name} 
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            const fallback = item.fallbackImage || `/images/${item.id}.jpg`;
+                            if (e.currentTarget.src !== fallback && !e.currentTarget.src.endsWith(fallback)) {
+                              e.currentTarget.src = fallback;
+                            }
+                          }}
+                          style={{ width: '42px', height: '42px', objectFit: 'cover', borderRadius: '4px' }} 
+                        />
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fff' }}>{item.name}</div>
                           <div style={{ fontSize: '0.72rem', color: '#8e9bb0' }}>Brand: {item.brand} • Qty: {item.quantity}</div>
                         </div>
                         <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#00f0ff', fontFamily: 'var(--font-stats)' }}>
-                          ${(item.price * item.quantity).toFixed(2)}
+                          Rs. {Number(item.price * item.quantity).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
                       </div>
                     ))}
@@ -200,7 +211,7 @@ export default function UserOrdersModal({ isOpen, onClose, user }) {
                       📍 Shipping to: <strong>{ord.deliveryDetails?.fullName}</strong> ({ord.deliveryDetails?.address}, {ord.deliveryDetails?.city}, {ord.deliveryDetails?.district}) • 📞 {ord.deliveryDetails?.primaryPhone}
                     </div>
                     <div style={{ fontWeight: 900, color: '#00ff66', fontSize: '0.95rem', fontFamily: 'var(--font-stats)' }}>
-                      LKR {Number(ord.amountLKR).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      Rs. {Number(ord.amountLKR).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                   </div>
                 </div>

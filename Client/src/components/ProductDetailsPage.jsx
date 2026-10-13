@@ -40,18 +40,29 @@ export default function ProductDetailsPage({
       window.scrollTo({ top: 0, behavior: 'smooth' });
 
       // Fetch live product details and reviews directly from MongoDB
-      fetch(`http://localhost:3000/api/products/${product.id}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.reviews) {
-            setReviewsList(data.reviews);
-            setCurrentRating(data.rating || 5.0);
-            setCurrentReviewsCount(data.reviewsCount || data.reviews.length);
+      (async () => {
+        try {
+          let res;
+          try {
+            res = await fetch(`/api/products/${product.id}`);
+          } catch {
+            res = await fetch(`http://localhost:3000/api/products/${product.id}`);
           }
-        })
-        .catch(err => {
+          if (res && res.ok) {
+            const data = await res.json();
+            if (data && data.reviews) {
+              setReviewsList(data.reviews);
+              setCurrentRating(data.rating || 5.0);
+              setCurrentReviewsCount(data.reviewsCount || data.reviews.length);
+            }
+            if (data && data.image) {
+              setSelectedImage(data.image);
+            }
+          }
+        } catch (err) {
           console.log('MongoDB live product details fetch fallback:', err.message);
-        });
+        }
+      })();
     }
   }, [product]);
 
@@ -478,7 +489,7 @@ export default function ProductDetailsPage({
                     color: '#fff',
                     fontFamily: 'var(--font-stats)'
                   }}>
-                    ${product.price.toFixed(2)}
+                    Rs. {Number(product.price).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                   {product.originalPrice && (
                     <span style={{
@@ -487,7 +498,7 @@ export default function ProductDetailsPage({
                       textDecoration: 'line-through',
                       fontFamily: 'var(--font-stats)'
                     }}>
-                      ${product.originalPrice.toFixed(2)}
+                      Rs. {Number(product.originalPrice).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   )}
                 </div>
@@ -504,7 +515,7 @@ export default function ProductDetailsPage({
                   fontWeight: 800,
                   fontFamily: 'var(--font-stats)'
                 }}>
-                  SAVE ${(product.originalPrice - product.price).toFixed(2)} ({discountPercent}% OFF)
+                  SAVE Rs. {(product.originalPrice - product.price).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({discountPercent}% OFF)
                 </div>
               )}
             </div>

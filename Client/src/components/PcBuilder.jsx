@@ -184,7 +184,7 @@ export default function PcBuilder({ onAddBuildToCart }) {
                         color: '#00ff66',
                         fontFamily: 'var(--font-stats)'
                       }}>
-                        ${selectedItem.price.toFixed(2)}
+                        Rs. {Number(selectedItem.price).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     )}
                   </div>
@@ -207,7 +207,7 @@ export default function PcBuilder({ onAddBuildToCart }) {
                     <option value="">-- Choose {slot.label.split('.')[1]} --</option>
                     {availableItems.map(item => (
                       <option key={item.id} value={item.id}>
-                        {item.brand} {item.name} (${item.price.toFixed(2)})
+                        {item.brand} {item.name} (Rs. {Number(item.price).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
                       </option>
                     ))}
                   </select>
@@ -305,7 +305,7 @@ export default function PcBuilder({ onAddBuildToCart }) {
             <div style={{ marginBottom: '1.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', color: '#8e9bb0', fontSize: '0.85rem' }}>
                 <span>Selected Components ({buildItemsList.length})</span>
-                <span>${totalBuildPrice.toFixed(2)}</span>
+                <span>Rs. {Number(totalBuildPrice).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', color: '#8e9bb0', fontSize: '0.85rem' }}>
                 <span>Professional Assembly & Testing</span>
@@ -328,7 +328,7 @@ export default function PcBuilder({ onAddBuildToCart }) {
                   TOTAL RIG PRICE:
                 </span>
                 <span style={{ fontSize: '1.8rem', fontWeight: 900, color: '#00f0ff', fontFamily: 'var(--font-stats)' }}>
-                  ${totalBuildPrice.toFixed(2)}
+                  Rs. {Number(totalBuildPrice).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
             </div>

@@ -43,13 +43,12 @@ export default function CartDrawer({
 
   const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const discount = (subtotal * discountPercent) / 100;
-  const shippingThreshold = 200;
+  const shippingThreshold = 60000;
   const isFreeShipping = subtotal >= shippingThreshold || subtotal === 0;
-  const shippingCost = isFreeShipping ? 0 : 15;
-  const finalTotalUSD = Math.max(0, subtotal - discount + shippingCost);
-  // Convert USD total to LKR for PayHere Sandbox (approx 300 LKR / USD)
-  const lkrRate = 300;
-  const finalTotalLKR = (finalTotalUSD * lkrRate).toFixed(2);
+  const shippingCost = isFreeShipping ? 0 : 1500;
+  const finalTotal = Math.max(0, subtotal - discount + shippingCost);
+  const finalTotalLKR = finalTotal.toFixed(2);
+  const finalTotalUSD = (finalTotal / 300).toFixed(2);
 
   const handleApplyPromo = () => {
     if (promoCode.trim().toUpperCase() === 'GAMER10') {
@@ -297,7 +296,7 @@ export default function CartDrawer({
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '4px' }}>
               <span style={{ color: isFreeShipping ? '#00ff66' : '#8e9bb0', fontWeight: 700 }}>
-                {isFreeShipping ? '🎉 UNLOCKED FREE EXPRESS SHIPPING' : `Add $${(shippingThreshold - subtotal).toFixed(2)} more for Free Express Shipping`}
+                {isFreeShipping ? '🎉 UNLOCKED FREE EXPRESS SHIPPING' : `Add Rs. ${(shippingThreshold - subtotal).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} more for Free Express Shipping`}
               </span>
             </div>
             <div style={{ width: '100%', height: '5px', backgroundColor: '#1f273d', borderRadius: '3px' }}>
@@ -334,6 +333,13 @@ export default function CartDrawer({
                   <img 
                     src={item.image} 
                     alt={item.name} 
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      const fallback = item.fallbackImage || `/images/${item.id}.jpg`;
+                      if (e.currentTarget.src !== fallback && !e.currentTarget.src.endsWith(fallback)) {
+                        e.currentTarget.src = fallback;
+                      }
+                    }}
                     style={{ width: '65px', height: '65px', objectFit: 'cover', borderRadius: '6px' }}
                   />
                   <div style={{ flex: 1 }}>
@@ -344,7 +350,7 @@ export default function CartDrawer({
                       {item.name}
                     </div>
                     <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#fff', fontFamily: 'var(--font-stats)' }}>
-                      ${(item.price * item.quantity).toFixed(2)}
+                      Rs. {(item.price * item.quantity).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                   </div>
 
@@ -438,17 +444,17 @@ export default function CartDrawer({
               <div style={{ fontSize: '0.82rem', display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '1rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e9bb0' }}>
                   <span>Subtotal:</span>
-                  <span>${subtotal.toFixed(2)}</span>
+                  <span>Rs. {subtotal.toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 {discount > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#00ff66' }}>
                     <span>Gamer Discount (10%):</span>
-                    <span>-${discount.toFixed(2)}</span>
+                    <span>-Rs. {discount.toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e9bb0' }}>
                   <span>Shipping:</span>
-                  <span>{shippingCost === 0 ? <strong style={{ color: '#00ff66' }}>FREE</strong> : `$${shippingCost}`}</span>
+                  <span>{shippingCost === 0 ? <strong style={{ color: '#00ff66' }}>FREE</strong> : `Rs. ${shippingCost.toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span>
                 </div>
 
                 <div style={{
@@ -461,10 +467,10 @@ export default function CartDrawer({
                 }}>
                   <div>
                     <span style={{ fontSize: '1.1rem', fontWeight: 900, color: '#fff', fontFamily: 'var(--font-stats)' }}>
-                      TOTAL: ${finalTotalUSD.toFixed(2)}
+                      TOTAL: Rs. {finalTotal.toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                     <div style={{ fontSize: '0.72rem', color: '#00f0ff', fontWeight: 700 }}>
-                      ≈ LKR {Number(finalTotalLKR).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      PayHere Currency: LKR
                     </div>
                   </div>
 
@@ -477,7 +483,7 @@ export default function CartDrawer({
                     padding: '3px 8px',
                     borderRadius: '4px'
                   }}>
-                    PAYHERE SANDBOX
+                    PAYHERE LKR
                   </span>
                 </div>
               </div>
@@ -572,15 +578,15 @@ export default function CartDrawer({
               alignItems: 'center'
             }}>
               <div>
-                <div style={{ fontSize: '0.72rem', color: '#8e9bb0' }}>PAYHERE TOTAL (LKR)</div>
+                <div style={{ fontSize: '0.72rem', color: '#8e9bb0' }}>PAYHERE TOTAL</div>
                 <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#00ff66', fontFamily: 'var(--font-stats)' }}>
-                  LKR {Number(finalTotalLKR).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  Rs. {Number(finalTotalLKR).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '0.72rem', color: '#8e9bb0' }}>CART TOTAL (USD)</div>
+                <div style={{ fontSize: '0.72rem', color: '#8e9bb0' }}>GATEWAY CURRENCY</div>
                 <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fff', fontFamily: 'var(--font-stats)' }}>
-                  ${finalTotalUSD.toFixed(2)}
+                  LKR
                 </div>
               </div>
             </div>
@@ -599,7 +605,7 @@ export default function CartDrawer({
                 <strong style={{ color: '#eab308', display: 'block', marginBottom: '2px' }}>
                   ⚠️ PAYHERE TRANSACTION LIMIT EXCEEDED (MAX RS. 50,000 / PAYMENT)
                 </strong>
-                PayHere Lite / Sandbox default accounts cap single payments at <strong>Rs. 50,000.00</strong>. Your cart total is <strong>LKR {Number(finalTotalLKR).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>. To test payment, please select an item under Rs. 50,000 or reduce cart quantity.
+                PayHere Lite / Sandbox default accounts cap single payments at <strong>Rs. 50,000.00</strong>. Your cart total is <strong>Rs. {Number(finalTotalLKR).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>. To test payment, please select an item under Rs. 50,000 or reduce cart quantity.
               </div>
             )}
 

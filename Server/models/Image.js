@@ -17,17 +17,23 @@ const imageSchema = new mongoose.Schema(
       default: "image/jpeg"
     },
     data: {
-      type: Buffer,
-      required: true
+      type: mongoose.Schema.Types.Mixed,
+      default: null
     },
     originalUrl: {
+      type: String,
+      default: ""
+    },
+    filePath: {
       type: String,
       default: ""
     }
   },
   {
-    timestamps: true
+    timestamps: true,
+    strict: false
   }
 );
 
 export const ImageModel = mongoose.model("Image", imageSchema);
+

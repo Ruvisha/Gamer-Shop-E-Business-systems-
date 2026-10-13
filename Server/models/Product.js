@@ -95,8 +95,12 @@ const productSchema = new mongoose.Schema(
       default: {}
     },
     image: {
+      type: mongoose.Schema.Types.Mixed,
+      default: ""
+    },
+    fallbackImage: {
       type: String,
-      default: "https://images.unsplash.com/photo-1587202372775-e229f172b9d7?auto=format&fit=crop&w=800&q=80"
+      default: ""
     },
     description: {
       type: String,
@@ -104,7 +108,8 @@ const productSchema = new mongoose.Schema(
     }
   },
   {
-    timestamps: true
+    timestamps: true,
+    strict: false
   }
 );
 

@@ -2,13 +2,16 @@ import express from "express";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import crypto from "crypto";
-import { connectDB } from "./db.js";
+import fs from "fs";
+import path from "path";
+import { connectDB, setOnConnectCallback } from "./db.js";
 import { Product } from "./models/Product.js";
 import { User } from "./models/User.js";
 import { ImageModel } from "./models/Image.js";
 import { Order } from "./models/Order.js";
 import { seedDatabase } from "./seed.js";
 import { products as initialProducts, categories } from "./data/products.js";
+import { resolveLocalImage, getContentTypeFromExt, fetchRemoteImage } from "./imageHelper.js";
 
 dotenv.config();
 
@@ -20,11 +23,12 @@ app.use(express.urlencoded({ limit: "15mb", extended: true }));
 let inMemoryProductList = [...initialProducts];
 
 // Connect MongoDB & seed data & store images
-connectDB().then(() => {
-  if (mongoose.connection.readyState === 1) {
-    seedDatabase();
-  }
+setOnConnectCallback(async () => {
+  console.log("[MongoDB] Connection established/re-established. Verifying database & images...");
+  await seedDatabase();
 });
+
+connectDB();
 
 // CORS headers for client requests
 app.use((req, res, next) => {
@@ -53,24 +57,173 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// MONGODB IMAGE SERVER ENDPOINT: GET /api/images/:id
-app.get("/api/images/:id", async (req, res) => {
-  const { id } = req.params;
-  try {
-    if (mongoose.connection.readyState === 1) {
-      const imgDoc = await ImageModel.findOne({ imageId: id });
-      if (imgDoc && imgDoc.data) {
-        res.setHeader("Content-Type", imgDoc.contentType || "image/jpeg");
-        res.setHeader("Cache-Control", "public, max-age=86400");
-        return res.send(imgDoc.data);
-      }
-    }
-  } catch (err) {
-    console.error("[Image Server] Error retrieving image from MongoDB:", err.message);
+// Helper to format product data and normalize images for client rendering
+export function formatProductForClient(product) {
+  const p = product.toObject ? product.toObject() : { ...product };
+  let rawImage = p.image || "";
+
+  // Normalize absolute localhost URLs (e.g. http://localhost:3000/api/images/gpu-1) to relative /api/images/gpu-1
+  if (typeof rawImage === "string" && rawImage.includes("/api/images/")) {
+    const parts = rawImage.split("/api/images/");
+    p.image = `/api/images/${parts[1]}`;
+  } else if (
+    !rawImage ||
+    (!rawImage.startsWith("http://") &&
+     !rawImage.startsWith("https://") &&
+     !rawImage.startsWith("data:") &&
+     !rawImage.startsWith("/"))
+  ) {
+    p.image = `/api/images/${p.id || p._id}`;
   }
 
-  // Fallback if image not yet in MongoDB
-  const product = inMemoryProductList.find(p => p.id === id);
+  p.fallbackImage = `/images/${p.id || 'gpu-1'}.jpg`;
+  return p;
+}
+
+// MONGODB IMAGE SERVER ENDPOINT: GET /api/images/:id
+app.get("/api/images/:id", async (req, res) => {
+  let { id } = req.params;
+  try {
+    id = decodeURIComponent(id);
+  } catch (e) {}
+
+  const cleanId = id.replace(/\.(jpg|jpeg|png|webp|gif)$/i, "");
+
+  // 1. If MongoDB is connected, query images collection
+  if (mongoose.connection.readyState === 1) {
+    try {
+      const isValidOid = mongoose.Types.ObjectId.isValid(id);
+
+      const imgDoc = await ImageModel.findOne({
+        $or: [
+          { imageId: id },
+          { imageId: cleanId },
+          { filename: id },
+          { filename: path.basename(id) },
+          { filename: `${cleanId}.jpg` },
+          ...(isValidOid ? [{ _id: id }] : [])
+        ]
+      });
+
+      if (imgDoc) {
+        // Serve binary data directly from MongoDB if present
+        if (imgDoc.data) {
+          let binaryBuf = null;
+          if (Buffer.isBuffer(imgDoc.data)) {
+            binaryBuf = imgDoc.data;
+          } else if (imgDoc.data?.value && typeof imgDoc.data.value === "function") {
+            binaryBuf = imgDoc.data.value(true);
+          } else if (imgDoc.data?.buffer) {
+            binaryBuf = Buffer.from(imgDoc.data.buffer);
+          } else if (typeof imgDoc.data === "string") {
+            const clean = imgDoc.data.replace(/^data:image\/\w+;base64,/, "");
+            binaryBuf = Buffer.from(clean, "base64");
+          }
+
+          if (binaryBuf && binaryBuf.length > 0) {
+            res.setHeader("Content-Type", imgDoc.contentType || "image/jpeg");
+            res.setHeader("Cache-Control", "public, max-age=86400");
+            return res.send(binaryBuf);
+          }
+        }
+
+        // If imgDoc specifies a local file path on disk (e.g. edited in MongoDB Compass)
+        const localFilePath = resolveLocalImage(
+          imgDoc.originalUrl || imgDoc.filePath || "",
+          imgDoc.filename || id
+        );
+        if (localFilePath) {
+          try {
+            const fileBuf = fs.readFileSync(localFilePath);
+            imgDoc.data = fileBuf;
+            imgDoc.contentType = getContentTypeFromExt(localFilePath, imgDoc.contentType || "image/jpeg");
+            await imgDoc.save();
+            res.setHeader("Content-Type", imgDoc.contentType);
+            res.setHeader("Cache-Control", "public, max-age=86400");
+            return res.send(fileBuf);
+          } catch (e) {}
+        }
+
+        // If imgDoc has a remote URL
+        if (imgDoc.originalUrl && imgDoc.originalUrl.startsWith("http")) {
+          return res.redirect(imgDoc.originalUrl);
+        }
+      }
+
+      // 2. Look up in products collection
+      const dbProduct = await Product.findOne({
+        $or: [
+          { id: id },
+          { id: cleanId },
+          ...(isValidOid ? [{ _id: id }] : [])
+        ]
+      });
+
+      if (dbProduct && dbProduct.image) {
+        // If product has binary data
+        if (Buffer.isBuffer(dbProduct.image) || (dbProduct.image?.buffer)) {
+          const buf = Buffer.isBuffer(dbProduct.image) ? dbProduct.image : Buffer.from(dbProduct.image.buffer);
+          res.setHeader("Content-Type", "image/jpeg");
+          res.setHeader("Cache-Control", "public, max-age=86400");
+          return res.send(buf);
+        }
+
+        // If product has Base64
+        if (typeof dbProduct.image === "string" && dbProduct.image.startsWith("data:image/")) {
+          const clean = dbProduct.image.replace(/^data:image\/\w+;base64,/, "");
+          const buffer = Buffer.from(clean, "base64");
+          res.setHeader("Content-Type", "image/jpeg");
+          res.setHeader("Cache-Control", "public, max-age=86400");
+          return res.send(buffer);
+        }
+
+        // If product references a local disk file
+        if (typeof dbProduct.image === "string") {
+          const localProductFile = resolveLocalImage("", dbProduct.image);
+          if (localProductFile) {
+            try {
+              const fileBuf = fs.readFileSync(localProductFile);
+              res.setHeader("Content-Type", getContentTypeFromExt(localProductFile));
+              res.setHeader("Cache-Control", "public, max-age=86400");
+              return res.send(fileBuf);
+            } catch (e) {}
+          }
+
+          // If product has a direct external web URL (not /api/images/)
+          if (dbProduct.image.startsWith("http") && !dbProduct.image.includes("/api/images/")) {
+            return res.redirect(dbProduct.image);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[Image Server] Error retrieving image from MongoDB:", err.message);
+    }
+  }
+
+  // 3. Fallback: Check local disk static files in Client/public/images/ and project
+  const candidateFiles = [
+    path.resolve(path.dirname(__filename), "..", "Client", "public", "images", `${id}.jpg`),
+    path.resolve(path.dirname(__filename), "..", "Client", "public", "images", id),
+    path.resolve(path.dirname(__filename), "..", "Client", "public", "images", `${cleanId}.jpg`),
+    resolveLocalImage("", id),
+    resolveLocalImage("", `${id}.jpg`),
+    resolveLocalImage("", `${cleanId}.jpg`),
+    path.resolve(path.dirname(__filename), "..", "Client", "public", "images", "gpu-1.jpg")
+  ];
+
+  for (const f of candidateFiles) {
+    if (f && fs.existsSync(f) && fs.statSync(f).isFile()) {
+      try {
+        const buf = fs.readFileSync(f);
+        res.setHeader("Content-Type", getContentTypeFromExt(f));
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        return res.send(buf);
+      } catch (e) {}
+    }
+  }
+
+  // 4. Fallback from in-memory product list
+  const product = inMemoryProductList.find(p => p.id === id || p.id === cleanId);
   if (product && product.image && product.image.startsWith("http") && !product.image.includes("/api/images/")) {
     return res.redirect(product.image);
   }
@@ -219,7 +372,7 @@ app.get("/api/products", async (req, res) => {
       }
 
       const productsFromDb = await Product.find(filter).sort({ createdAt: -1 });
-      return res.json(productsFromDb);
+      return res.json(productsFromDb.map(formatProductForClient));
     } catch (err) {
       console.error("[Products] MongoDB fetch error, falling back:", err.message);
     }
@@ -238,7 +391,7 @@ app.get("/api/products", async (req, res) => {
       p.brand?.toLowerCase().includes(query)
     );
   }
-  res.json(result);
+  res.json(result.map(formatProductForClient));
 });
 
 // GET product by ID
@@ -250,7 +403,7 @@ app.get("/api/products/:id", async (req, res) => {
       const dbProduct = await Product.findOne({
         $or: [{ id: id }, { _id: mongoose.Types.ObjectId.isValid(id) ? id : null }]
       });
-      if (dbProduct) return res.json(dbProduct);
+      if (dbProduct) return res.json(formatProductForClient(dbProduct));
     } catch (err) {
       console.error("[Products] MongoDB findById error:", err.message);
     }
@@ -260,7 +413,7 @@ app.get("/api/products/:id", async (req, res) => {
   if (!product) {
     return res.status(404).json({ error: "Product not found" });
   }
-  res.json(product);
+  res.json(formatProductForClient(product));
 });
 
 // GET categories
@@ -347,7 +500,13 @@ app.post("/api/products", async (req, res) => {
       let buffer;
       let contentType = "image/jpeg";
 
-      if (image.startsWith("data:image/")) {
+      const localFile = resolveLocalImage("", image);
+      if (localFile) {
+        try {
+          buffer = fs.readFileSync(localFile);
+          contentType = getContentTypeFromExt(localFile);
+        } catch (e) {}
+      } else if (image.startsWith("data:image/")) {
         const matches = image.match(/^data:(image\/\w+);base64,(.+)$/);
         if (matches) {
           contentType = matches[1];
@@ -422,7 +581,13 @@ app.put("/api/products/:id", async (req, res) => {
       let contentType = "image/jpeg";
       const imageStr = req.body.image;
 
-      if (imageStr.startsWith("data:image/")) {
+      const localFile = resolveLocalImage("", imageStr);
+      if (localFile) {
+        try {
+          buffer = fs.readFileSync(localFile);
+          contentType = getContentTypeFromExt(localFile);
+        } catch (e) {}
+      } else if (imageStr.startsWith("data:image/")) {
         const matches = imageStr.match(/^data:(image\/\w+);base64,(.+)$/);
         if (matches) {
           contentType = matches[1];

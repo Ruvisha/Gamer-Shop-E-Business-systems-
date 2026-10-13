@@ -232,14 +232,14 @@ export default function AdminProductModal({ isOpen, onClose, onSaveProduct, init
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.8rem' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.75rem', color: '#00f0ff', fontWeight: 700, marginBottom: '0.4rem' }}>
-                PRICE ($) *
+                PRICE (Rs.) *
               </label>
               <input
                 type="number"
                 step="0.01"
                 name="price"
                 required
-                placeholder="1999.99"
+                placeholder="599999.00"
                 value={formData.price}
                 onChange={handleChange}
                 style={{
@@ -255,13 +255,13 @@ export default function AdminProductModal({ isOpen, onClose, onSaveProduct, init
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '0.75rem', color: '#8e9bb0', fontWeight: 700, marginBottom: '0.4rem' }}>
-                ORIG. PRICE ($)
+                ORIG. PRICE (Rs.)
               </label>
               <input
                 type="number"
                 step="0.01"
                 name="originalPrice"
-                placeholder="2199.99"
+                placeholder="659999.00"
                 value={formData.originalPrice}
                 onChange={handleChange}
                 style={{

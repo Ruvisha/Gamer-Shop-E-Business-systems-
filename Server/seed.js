@@ -1,21 +1,8 @@
+import fs from "fs";
 import { Product } from "./models/Product.js";
 import { ImageModel } from "./models/Image.js";
 import { products as initialProducts } from "./data/products.js";
-
-// Helper to download image binary buffer
-async function fetchImageBuffer(url) {
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
-    if (res.ok) {
-      const arrayBuffer = await res.arrayBuffer();
-      const contentType = res.headers.get("content-type") || "image/jpeg";
-      return { buffer: Buffer.from(arrayBuffer), contentType };
-    }
-  } catch (err) {
-    console.warn(`[MongoDB Image Store] Could not download from ${url}:`, err.message);
-  }
-  return null;
-}
+import { resolveLocalImage, getContentTypeFromExt, fetchRemoteImage } from "./imageHelper.js";
 
 export const seedDatabase = async () => {
   try {
@@ -26,35 +13,94 @@ export const seedDatabase = async () => {
       console.log(`[MongoDB] Successfully seeded ${initialProducts.length} PC parts products into MongoDB.`);
     }
 
-    console.log("[MongoDB Image Store] Checking & storing product images in MongoDB...");
-    const productsInDb = await Product.find();
+    console.log("[MongoDB Image Store] Checking & syncing product images in MongoDB...");
 
+    // 1. Sync any existing ImageModel documents that point to local files (e.g. edited in MongoDB Compass)
+    const allImages = await ImageModel.find();
+    for (const imgDoc of allImages) {
+      const localFilePath = resolveLocalImage(imgDoc.originalUrl, imgDoc.filename);
+      if (localFilePath) {
+        try {
+          const fileBuf = fs.readFileSync(localFilePath);
+          const currentBufLength = imgDoc.data
+            ? (typeof imgDoc.data.length === "function"
+                ? imgDoc.data.length()
+                : (imgDoc.data.buffer?.length || imgDoc.data.length || 0))
+            : 0;
+          if (currentBufLength !== fileBuf.length) {
+            imgDoc.data = fileBuf;
+            imgDoc.contentType = getContentTypeFromExt(localFilePath, imgDoc.contentType || "image/jpeg");
+            await imgDoc.save();
+            console.log(`[MongoDB Image Store] Synced real image data for ${imgDoc.imageId} from ${localFilePath} (${fileBuf.length} bytes)`);
+          }
+        } catch (err) {
+          console.warn(`[MongoDB Image Store] Error reading local file for ${imgDoc.imageId}:`, err.message);
+        }
+      }
+    }
+
+    // 2. Process all products from MongoDB
+    const productsInDb = await Product.find();
     let storedCount = 0;
+
     for (const prod of productsInDb) {
-      const existingImage = await ImageModel.findOne({ imageId: prod.id });
+      let existingImage = await ImageModel.findOne({ imageId: prod.id });
+
+      // Check if product image is a local file
+      const localProductFile = resolveLocalImage("", prod.image);
+
       if (!existingImage) {
-        let imageData = null;
-        if (prod.image && prod.image.startsWith("http")) {
-          imageData = await fetchImageBuffer(prod.image);
+        let fileBuffer = null;
+        let contentType = "image/jpeg";
+
+        if (localProductFile) {
+          try {
+            fileBuffer = fs.readFileSync(localProductFile);
+            contentType = getContentTypeFromExt(localProductFile);
+          } catch (e) {}
+        } else if (prod.image && prod.image.startsWith("http") && !prod.image.includes("/api/images/")) {
+          const fetched = await fetchRemoteImage(prod.image);
+          if (fetched) {
+            fileBuffer = fetched.buffer;
+            contentType = fetched.contentType;
+          }
         }
 
-        if (imageData && imageData.buffer) {
-          await ImageModel.create({
+        if (fileBuffer) {
+          existingImage = await ImageModel.create({
             imageId: prod.id,
             filename: `${prod.id}.jpg`,
-            contentType: imageData.contentType,
-            data: imageData.buffer,
-            originalUrl: prod.image
+            contentType,
+            data: fileBuffer,
+            originalUrl: prod.image || ""
           });
           storedCount++;
         }
+      } else if (localProductFile) {
+        // Product image references a local file that changed
+        try {
+          const fileBuf = fs.readFileSync(localProductFile);
+          const existingLen = existingImage.data
+            ? (typeof existingImage.data.length === "function"
+                ? existingImage.data.length()
+                : (existingImage.data.buffer?.length || existingImage.data.length || 0))
+            : 0;
+          if (existingLen !== fileBuf.length) {
+            existingImage.data = fileBuf;
+            existingImage.contentType = getContentTypeFromExt(localProductFile);
+            await existingImage.save();
+          }
+        } catch (e) {}
       }
 
-      // Ensure product image URL in MongoDB points to MongoDB served image route
-      const mongoImageUrl = `http://localhost:3000/api/images/${prod.id}`;
+      // Ensure product image points to a valid URL if missing
       let needsSave = false;
-      if (prod.image !== mongoImageUrl) {
-        prod.image = mongoImageUrl;
+      if (!prod.image) {
+        prod.image = `/api/images/${prod.id}`;
+        needsSave = true;
+      }
+      if (!prod.fallbackImage) {
+        prod.fallbackImage = `/images/${prod.id}.jpg`;
         needsSave = true;
       }
 
@@ -89,7 +135,7 @@ export const seedDatabase = async () => {
     }
 
     const totalImagesInDb = await ImageModel.countDocuments();
-    console.log(`[MongoDB Image Store] Stored ${storedCount} new images. Total images stored in MongoDB: ${totalImagesInDb}`);
+    console.log(`[MongoDB Image Store] Stored/verified ${storedCount} new images. Total images stored in MongoDB: ${totalImagesInDb}`);
   } catch (error) {
     console.error("[MongoDB] Error seeding database/images:", error.message);
   }

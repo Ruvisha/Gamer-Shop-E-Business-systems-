@@ -73,6 +73,13 @@ export default function ProductModal({ product, onClose, onAddToCart }) {
               <img 
                 src={product.image} 
                 alt={product.name} 
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  const fallback = product.fallbackImage || `/images/${product.id}.jpg`;
+                  if (e.currentTarget.src !== fallback && !e.currentTarget.src.endsWith(fallback)) {
+                    e.currentTarget.src = fallback;
+                  }
+                }}
                 style={{ width: '100%', height: '320px', objectFit: 'cover' }}
               />
             </div>
@@ -128,11 +135,11 @@ export default function ProductModal({ product, onClose, onAddToCart }) {
             {/* Price */}
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '1.2rem' }}>
               <span style={{ fontSize: '1.8rem', fontWeight: 900, color: '#fff', fontFamily: 'var(--font-stats)' }}>
-                ${product.price.toFixed(2)}
+                Rs. {Number(product.price).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
               {product.originalPrice && (
                 <span style={{ fontSize: '1rem', color: '#5c687e', textDecoration: 'line-through' }}>
-                  ${product.originalPrice.toFixed(2)}
+                  Rs. {Number(product.originalPrice).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               )}
             </div>
