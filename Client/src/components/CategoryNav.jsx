@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { LayoutGrid, Cpu, Zap, MemoryStick, CircuitBoard, HardDrive, Fan, BatteryCharging, Box } from 'lucide-react';
-import { categories } from './products';
+import { categories as defaultCategories } from '../data/products';
 
 const iconMap = {
   LayoutGrid,
@@ -14,7 +14,33 @@ const iconMap = {
   Box
 };
 
-export default function CategoryNav({ activeCategory, onSelectCategory }) {
+export default function CategoryNav({ activeCategory, onSelectCategory, categories: categoriesProp = null }) {
+  const [categoriesList, setCategoriesList] = useState(categoriesProp || defaultCategories);
+
+  useEffect(() => {
+    if (categoriesProp && categoriesProp.length > 0) {
+      setCategoriesList(categoriesProp);
+      return;
+    }
+    const fetchCategories = async () => {
+      try {
+        let res = await fetch('/api/categories').catch(() => null);
+        if (!res || !res.ok) {
+          res = await fetch('http://localhost:3000/api/categories').catch(() => null);
+        }
+        if (res && res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setCategoriesList(data);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load categories from MongoDB:', err);
+      }
+    };
+    fetchCategories();
+  }, [categoriesProp]);
+
   return (
     <div style={{
       backgroundColor: '#0a0d14',
@@ -30,7 +56,7 @@ export default function CategoryNav({ activeCategory, onSelectCategory }) {
           scrollbarWidth: 'none',
           msOverflowStyle: 'none'
         }}>
-          {categories.map((cat) => {
+          {categoriesList.map((cat) => {
             const IconComponent = iconMap[cat.icon] || LayoutGrid;
             const isActive = activeCategory === cat.id;
 

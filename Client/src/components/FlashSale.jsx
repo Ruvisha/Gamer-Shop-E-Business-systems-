@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Flame, Clock, ShoppingCart, Zap } from 'lucide-react';
-import { products } from './products';
 
-export default function FlashSale({ onAddToCart, onQuickView }) {
+export default function FlashSale({ products = [], onAddToCart, onQuickView }) {
   // Live ticking countdown timer
   const [timeLeft, setTimeLeft] = useState({
     hours: 14,

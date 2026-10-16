@@ -97,6 +97,11 @@ export default function CartDrawer({
       return;
     }
 
+    if (Number(finalTotalLKR) > 5000000) {
+      alert("The maximum single payment limit is Rs. 5,000,000. Please reduce cart items or contact our support team.");
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
@@ -591,8 +596,8 @@ export default function CartDrawer({
               </div>
             </div>
 
-            {/* PayHere Maximum Payment Limit Warning Banner */}
-            {Number(finalTotalLKR) > 50000 && (
+            {/* Payment Maximum Limit Banner (Up to Rs. 5 Million) */}
+            {Number(finalTotalLKR) > 5000000 && (
               <div style={{
                 backgroundColor: 'rgba(234, 179, 8, 0.15)',
                 border: '1px solid #eab308',
@@ -603,9 +608,9 @@ export default function CartDrawer({
                 color: '#fef08a'
               }}>
                 <strong style={{ color: '#eab308', display: 'block', marginBottom: '2px' }}>
-                  ⚠️ PAYHERE TRANSACTION LIMIT EXCEEDED (MAX RS. 50,000 / PAYMENT)
+                  ⚠️ TRANSACTION LIMIT EXCEEDED (MAX RS. 5,000,000 / PAYMENT)
                 </strong>
-                PayHere Lite / Sandbox default accounts cap single payments at <strong>Rs. 50,000.00</strong>. Your cart total is <strong>Rs. {Number(finalTotalLKR).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>. To test payment, please select an item under Rs. 50,000 or reduce cart quantity.
+                Card payments allow single transactions up to <strong>Rs. 5,000,000.00</strong>. Your cart total is <strong>Rs. {Number(finalTotalLKR).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>. Please reduce items or contact support for higher limits.
               </div>
             )}
 
@@ -865,7 +870,7 @@ export default function CartDrawer({
                       Online Card Payment (Secure PayHere Payment)
                     </div>
                     <div style={{ fontSize: '0.72rem', color: '#8e9bb0' }}>
-                      Visa, MasterCard, Amex & Mobile Wallets via PayHere Sandbox
+                      Visa, MasterCard, Amex & Mobile Wallets (Supports up to Rs. 5,000,000)
                     </div>
                   </div>
                 </label>

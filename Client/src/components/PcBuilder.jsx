@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Wrench, Zap, Check, Trash2, ShoppingBag, ShieldAlert, Sparkles } from 'lucide-react';
-import { products } from './products';
 
 const slotTypes = [
   { id: 'cpu', label: '1. Processor (CPU)' },
@@ -11,15 +10,28 @@ const slotTypes = [
   { id: 'psu', label: '6. Power Supply (PSU)' }
 ];
 
-export default function PcBuilder({ onAddBuildToCart }) {
+export default function PcBuilder({ products = [], onAddBuildToCart }) {
   const [selectedBuild, setSelectedBuild] = useState({
-    cpu: products.find(p => p.id === 'cpu-3') || null,
-    gpu: products.find(p => p.id === 'gpu-2') || null,
-    mb: products.find(p => p.id === 'mb-2') || null,
-    ram: products.find(p => p.id === 'ram-2') || null,
-    storage: products.find(p => p.id === 'storage-1') || null,
-    psu: products.find(p => p.id === 'psu-1') || null,
+    cpu: null,
+    gpu: null,
+    mb: null,
+    ram: null,
+    storage: null,
+    psu: null,
   });
+
+  useEffect(() => {
+    if (products.length > 0) {
+      setSelectedBuild(prev => ({
+        cpu: prev.cpu || products.find(p => p.id === 'cpu-3') || products.find(p => p.category === 'cpu') || null,
+        gpu: prev.gpu || products.find(p => p.id === 'gpu-2') || products.find(p => p.category === 'gpu') || null,
+        mb: prev.mb || products.find(p => p.id === 'mb-2') || products.find(p => p.category === 'mb') || null,
+        ram: prev.ram || products.find(p => p.id === 'ram-2') || products.find(p => p.category === 'ram') || null,
+        storage: prev.storage || products.find(p => p.id === 'storage-1') || products.find(p => p.category === 'storage') || null,
+        psu: prev.psu || products.find(p => p.id === 'psu-1') || products.find(p => p.category === 'psu') || null,
+      }));
+    }
+  }, [products]);
 
   const handleSelectComponent = (slotId, productId) => {
     const item = products.find(p => p.id === productId) || null;
@@ -44,21 +56,21 @@ export default function PcBuilder({ onAddBuildToCart }) {
   const loadPreset = (presetType) => {
     if (presetType === 'flagship') {
       setSelectedBuild({
-        cpu: products.find(p => p.id === 'cpu-1'),
-        gpu: products.find(p => p.id === 'gpu-1'),
-        mb: products.find(p => p.id === 'mb-1'),
-        ram: products.find(p => p.id === 'ram-1'),
-        storage: products.find(p => p.id === 'storage-2'),
-        psu: products.find(p => p.id === 'psu-1'),
+        cpu: products.find(p => p.id === 'cpu-1') || products.find(p => p.category === 'cpu'),
+        gpu: products.find(p => p.id === 'gpu-1') || products.find(p => p.category === 'gpu'),
+        mb: products.find(p => p.id === 'mb-1') || products.find(p => p.category === 'mb'),
+        ram: products.find(p => p.id === 'ram-1') || products.find(p => p.category === 'ram'),
+        storage: products.find(p => p.id === 'storage-2') || products.find(p => p.category === 'storage'),
+        psu: products.find(p => p.id === 'psu-1') || products.find(p => p.category === 'psu'),
       });
     } else if (presetType === 'streamer') {
       setSelectedBuild({
-        cpu: products.find(p => p.id === 'cpu-3'),
-        gpu: products.find(p => p.id === 'gpu-2'),
-        mb: products.find(p => p.id === 'mb-2'),
-        ram: products.find(p => p.id === 'ram-2'),
-        storage: products.find(p => p.id === 'storage-1'),
-        psu: products.find(p => p.id === 'psu-1'),
+        cpu: products.find(p => p.id === 'cpu-3') || products.find(p => p.category === 'cpu'),
+        gpu: products.find(p => p.id === 'gpu-2') || products.find(p => p.category === 'gpu'),
+        mb: products.find(p => p.id === 'mb-2') || products.find(p => p.category === 'mb'),
+        ram: products.find(p => p.id === 'ram-2') || products.find(p => p.category === 'ram'),
+        storage: products.find(p => p.id === 'storage-1') || products.find(p => p.category === 'storage'),
+        psu: products.find(p => p.id === 'psu-1') || products.find(p => p.category === 'psu'),
       });
     }
   };

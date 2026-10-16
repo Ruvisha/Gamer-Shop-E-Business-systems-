@@ -383,6 +383,7 @@ export default function App() {
 
             {/* Flash Sale Banner */}
             <FlashSale
+              products={allProducts}
               onAddToCart={handleAddToCart}
               onQuickView={handleOpenProductDetails}
             />
@@ -418,6 +419,7 @@ export default function App() {
         {activeSection === 'builder' && (
           <div style={{ padding: '1rem 0' }}>
             <PcBuilder
+              products={allProducts}
               onAddBuildToCart={handleAddBuildToCart}
             />
           </div>
@@ -427,6 +429,7 @@ export default function App() {
         {activeSection === 'deals' && (
           <div style={{ padding: '1rem 0 3rem' }}>
             <FlashSale
+              products={allProducts}
               onAddToCart={handleAddToCart}
               onQuickView={handleOpenProductDetails}
             />

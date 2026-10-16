@@ -40,14 +40,14 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true
     },
+    phone: {
+      type: String,
+      default: ""
+    },
     role: {
       type: String,
       enum: ["user", "admin"],
       default: "user"
-    },
-    avatar: {
-      type: String,
-      default: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"
     },
     loginLogs: [loginLogSchema]
   },

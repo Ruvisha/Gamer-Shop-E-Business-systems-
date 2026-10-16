@@ -1,21 +1,34 @@
 import React, { useState } from 'react';
-import { X, Lock, Mail, Gamepad2, ArrowRight, AlertCircle, User } from 'lucide-react';
+import { X, Lock, Mail, Gamepad2, ArrowRight, AlertCircle, User, Phone, CheckCircle2, UserPlus, LogIn } from 'lucide-react';
 
 export default function AuthModal({ isOpen, onClose, onLoginSuccess, authReason }) {
-  const [mode, setMode] = useState('login'); // 'login' or 'register'
+  const [mode, setMode] = useState('login'); // 'login' (Sign In) or 'register' (Sign Up)
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     gamerTag: '',
+    phone: '',
     confirmPassword: ''
   });
   const [errorMessage, setErrorMessage] = useState('');
+  const [isRegisteredAlert, setIsRegisteredAlert] = useState(false);
+  const [notRegisteredAlert, setNotRegisteredAlert] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   if (!isOpen) return null;
+
+  const handleModeSwitch = (newMode) => {
+    setMode(newMode);
+    setErrorMessage('');
+    setIsRegisteredAlert(false);
+    setNotRegisteredAlert(false);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
+    setIsRegisteredAlert(false);
+    setNotRegisteredAlert(false);
 
     if (!formData.email.trim() || !formData.password.trim()) {
       setErrorMessage('Please enter both your email address and password.');
@@ -23,46 +36,78 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, authReason 
     }
 
     if (mode === 'register') {
+      if (!formData.gamerTag.trim()) {
+        setErrorMessage('Please enter your Gamer Tag or display name.');
+        return;
+      }
+      if (formData.password.length < 6) {
+        setErrorMessage('Password must be at least 6 characters long.');
+        return;
+      }
       if (formData.password !== formData.confirmPassword) {
-        setErrorMessage('Passwords do not match.');
+        setErrorMessage('Passwords do not match. Please re-enter your password.');
         return;
       }
     }
+
+    setIsLoading(true);
 
     const isRoleAdmin = formData.email.toLowerCase().includes('admin');
     const userRole = isRoleAdmin ? 'admin' : 'user';
 
     try {
-      const response = await fetch('http://localhost:3000/api/auth/login', {
+      const apiPath = mode === 'register' ? '/api/auth/register' : '/api/auth/login';
+      const payload = mode === 'register' ? {
+        email: formData.email.trim(),
+        password: formData.password,
+        gamerTag: formData.gamerTag.trim(),
+        phone: formData.phone.trim(),
+        role: userRole
+      } : {
+        email: formData.email.trim(),
+        password: formData.password
+      };
+
+      let response = await fetch(apiPath, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: formData.email.trim(),
-          password: formData.password,
-          role: userRole
-        })
-      });
+        body: JSON.stringify(payload)
+      }).catch(() => null);
+
+      if (!response) {
+        response = await fetch(`http://localhost:3000${apiPath}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).catch((err) => {
+          throw new Error('Could not connect to authentication server. Please ensure the backend is running.');
+        });
+      }
 
       const data = await response.json();
-      if (data.success && data.user) {
+
+      if (response.ok && data.success && data.user) {
+        setIsLoading(false);
         onLoginSuccess(data.user);
         onClose();
+        return;
+      }
+
+      // Handle specific registration / signin conditions
+      setIsLoading(false);
+      if (data.isRegistered === true) {
+        setIsRegisteredAlert(true);
+        setErrorMessage(data.error || 'This email is already registered. Please sign in instead.');
+      } else if (data.isRegistered === false) {
+        setNotRegisteredAlert(true);
+        setErrorMessage(data.error || 'No account found with this email. Please sign up first.');
       } else {
-        setErrorMessage(data.error || 'Authentication failed. Please check your credentials.');
+        setErrorMessage(data.error || 'Authentication failed. Please verify your credentials.');
       }
     } catch (err) {
-      console.warn("Server auth endpoint offline, logging in locally:", err.message);
-      const fallbackUser = {
-        id: `user-${Date.now()}`,
-        name: formData.gamerTag || (isRoleAdmin ? 'Admin Manager' : formData.email.split('@')[0] || 'CyberGamer'),
-        email: formData.email.trim(),
-        role: userRole,
-        avatar: isRoleAdmin
-          ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'
-          : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'
-      };
-      onLoginSuccess(fallbackUser);
-      onClose();
+      console.warn("Server auth endpoint offline:", err.message);
+      setIsLoading(false);
+      setErrorMessage(`Server connection error (${err.message}). Ensure the backend server is running.`);
     }
   };
 
@@ -82,7 +127,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, authReason 
         onClick={(e) => e.stopPropagation()}
         className="glass-panel"
         style={{
-          maxWidth: '460px',
+          maxWidth: '480px',
           width: '100%',
           backgroundColor: '#0c0f18',
           border: '1px solid rgba(0, 240, 255, 0.4)',
@@ -120,22 +165,84 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, authReason 
             width: '50px',
             height: '50px',
             borderRadius: '12px',
-            background: 'linear-gradient(135deg, #00f0ff 0%, #7000ff 100%)',
+            background: mode === 'login' 
+              ? 'linear-gradient(135deg, #00f0ff 0%, #7000ff 100%)' 
+              : 'linear-gradient(135deg, #ff0055 0%, #7000ff 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             margin: '0 auto 0.8rem',
-            boxShadow: '0 0 20px rgba(0, 240, 255, 0.4)'
+            boxShadow: mode === 'login' ? '0 0 20px rgba(0, 240, 255, 0.4)' : '0 0 20px rgba(255, 0, 85, 0.4)'
           }}>
-            <Gamepad2 size={28} color="#000" />
+            {mode === 'login' ? <Gamepad2 size={28} color="#000" /> : <UserPlus size={28} color="#fff" />}
           </div>
 
           <h2 style={{ fontSize: '1.4rem', fontWeight: 900, color: '#fff', fontFamily: "'Orbitron', sans-serif" }}>
-            {mode === 'login' ? 'SIGN IN TO GAMER SHOP' : 'CREATE ACCOUNT'}
+            {mode === 'login' ? 'SIGN IN' : 'CREATE ACCOUNT (SIGN UP)'}
           </h2>
           <p style={{ fontSize: '0.82rem', color: '#8e9bb0', marginTop: '0.2rem' }}>
-            {mode === 'login' ? 'Enter your email and password to log in securely' : 'Fill in your details to create an account'}
+            {mode === 'login' 
+              ? 'Enter your registered email and password to validate your session' 
+              : 'Register your details to create an account in Gamer Shop'}
           </p>
+        </div>
+
+        {/* Segmented Mode Tabs: SIGN IN vs SIGN UP */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '6px',
+          backgroundColor: '#121624',
+          padding: '4px',
+          borderRadius: '12px',
+          marginBottom: '1.2rem',
+          border: '1px solid rgba(255, 255, 255, 0.08)'
+        }}>
+          <button
+            type="button"
+            onClick={() => handleModeSwitch('login')}
+            style={{
+              padding: '0.65rem',
+              borderRadius: '9px',
+              border: 'none',
+              backgroundColor: mode === 'login' ? '#00f0ff' : 'transparent',
+              color: mode === 'login' ? '#000' : '#8e9bb0',
+              fontWeight: 800,
+              fontSize: '0.82rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <LogIn size={15} />
+            <span>SIGN IN</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleModeSwitch('register')}
+            style={{
+              padding: '0.65rem',
+              borderRadius: '9px',
+              border: 'none',
+              backgroundColor: mode === 'register' ? '#ff0055' : 'transparent',
+              color: mode === 'register' ? '#fff' : '#8e9bb0',
+              fontWeight: 800,
+              fontSize: '0.82rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <UserPlus size={15} />
+            <span>SIGN UP</span>
+          </button>
         </div>
 
         {/* Auth Reason Notice Banner */}
@@ -159,8 +266,87 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, authReason 
           </div>
         )}
 
-        {/* Error Alert */}
-        {errorMessage && (
+        {/* Dynamic Registration Status Guidance Alerts */}
+        {isRegisteredAlert && (
+          <div style={{
+            backgroundColor: 'rgba(234, 179, 8, 0.15)',
+            border: '1px solid #eab308',
+            color: '#fef08a',
+            padding: '0.8rem 1rem',
+            borderRadius: '10px',
+            fontSize: '0.82rem',
+            marginBottom: '1rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.4rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, color: '#eab308' }}>
+              <AlertCircle size={16} />
+              <span>ALREADY REGISTERED</span>
+            </div>
+            <span>You already have an account with this email. Please switch to Sign In to validate your password.</span>
+            <button
+              type="button"
+              onClick={() => handleModeSwitch('login')}
+              style={{
+                alignSelf: 'flex-start',
+                marginTop: '4px',
+                padding: '0.35rem 0.8rem',
+                backgroundColor: '#eab308',
+                color: '#000',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '0.75rem',
+                fontWeight: 800,
+                cursor: 'pointer'
+              }}
+            >
+              👉 SWITCH TO SIGN IN
+            </button>
+          </div>
+        )}
+
+        {notRegisteredAlert && (
+          <div style={{
+            backgroundColor: 'rgba(0, 240, 255, 0.15)',
+            border: '1px solid #00f0ff',
+            color: '#cffafe',
+            padding: '0.8rem 1rem',
+            borderRadius: '10px',
+            fontSize: '0.82rem',
+            marginBottom: '1rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.4rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, color: '#00f0ff' }}>
+              <AlertCircle size={16} />
+              <span>NOT REGISTERED YET</span>
+            </div>
+            <span>No account was found with <strong>{formData.email}</strong>. Please switch to Sign Up to register and save your details.</span>
+            <button
+              type="button"
+              onClick={() => handleModeSwitch('register')}
+              style={{
+                alignSelf: 'flex-start',
+                marginTop: '4px',
+                padding: '0.35rem 0.8rem',
+                backgroundColor: '#00f0ff',
+                color: '#000',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '0.75rem',
+                fontWeight: 800,
+                cursor: 'pointer'
+              }}
+            >
+              👉 SWITCH TO SIGN UP
+            </button>
+          </div>
+        )}
+
+        {/* Generic Error Alert */}
+        {errorMessage && !isRegisteredAlert && !notRegisteredAlert && (
           <div style={{
             backgroundColor: 'rgba(255, 0, 85, 0.15)',
             border: '1px solid rgba(255, 0, 85, 0.4)',
@@ -179,22 +365,22 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, authReason 
         )}
 
         {/* Auth Form */}
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
           {mode === 'register' && (
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: '#8e9bb0', marginBottom: '0.4rem', fontWeight: 600 }}>
-                GAMER TAG / USERNAME
+              <label style={{ display: 'block', fontSize: '0.75rem', color: '#8e9bb0', marginBottom: '0.35rem', fontWeight: 600 }}>
+                GAMER TAG / FULL NAME <span style={{ color: '#ff0055' }}>*</span>
               </label>
               <div style={{ position: 'relative' }}>
                 <User size={16} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#52607b' }} />
                 <input
                   type="text"
-                  placeholder="Enter your gamer tag"
+                  placeholder="e.g. CyberViper99"
                   value={formData.gamerTag}
                   onChange={(e) => setFormData(prev => ({ ...prev, gamerTag: e.target.value }))}
                   style={{
                     width: '100%',
-                    padding: '0.8rem 1rem 0.8rem 2.8rem',
+                    padding: '0.75rem 1rem 0.75rem 2.8rem',
                     backgroundColor: '#121624',
                     border: '1px solid rgba(255, 255, 255, 0.1)',
                     borderRadius: '8px',
@@ -208,8 +394,8 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, authReason 
           )}
 
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', color: '#8e9bb0', marginBottom: '0.4rem', fontWeight: 600 }}>
-              EMAIL ADDRESS
+            <label style={{ display: 'block', fontSize: '0.75rem', color: '#8e9bb0', marginBottom: '0.35rem', fontWeight: 600 }}>
+              EMAIL ADDRESS <span style={{ color: '#00f0ff' }}>*</span>
             </label>
             <div style={{ position: 'relative' }}>
               <Mail size={16} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#52607b' }} />
@@ -220,7 +406,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, authReason 
                 onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
                 style={{
                   width: '100%',
-                  padding: '0.8rem 1rem 0.8rem 2.8rem',
+                  padding: '0.75rem 1rem 0.75rem 2.8rem',
                   backgroundColor: '#121624',
                   border: '1px solid rgba(255, 255, 255, 0.1)',
                   borderRadius: '8px',
@@ -233,20 +419,46 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, authReason 
             </div>
           </div>
 
+          {mode === 'register' && (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: '#8e9bb0', marginBottom: '0.35rem', fontWeight: 600 }}>
+                PHONE NUMBER (OPTIONAL)
+              </label>
+              <div style={{ position: 'relative' }}>
+                <Phone size={16} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#52607b' }} />
+                <input
+                  type="text"
+                  placeholder="e.g. 0771234567"
+                  value={formData.phone}
+                  onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem 0.75rem 2.8rem',
+                    backgroundColor: '#121624',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: '8px',
+                    color: '#fff',
+                    fontSize: '0.88rem'
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', color: '#8e9bb0', marginBottom: '0.4rem', fontWeight: 600 }}>
-              PASSWORD
+            <label style={{ display: 'block', fontSize: '0.75rem', color: '#8e9bb0', marginBottom: '0.35rem', fontWeight: 600 }}>
+              PASSWORD {mode === 'register' && '(MIN 6 CHARACTERS)'} <span style={{ color: '#00f0ff' }}>*</span>
             </label>
             <div style={{ position: 'relative' }}>
               <Lock size={16} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#52607b' }} />
               <input
                 type="password"
-                placeholder="Enter password"
+                placeholder="Enter your password"
                 value={formData.password}
                 onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
                 style={{
                   width: '100%',
-                  padding: '0.8rem 1rem 0.8rem 2.8rem',
+                  padding: '0.75rem 1rem 0.75rem 2.8rem',
                   backgroundColor: '#121624',
                   border: '1px solid rgba(255, 255, 255, 0.1)',
                   borderRadius: '8px',
@@ -261,19 +473,19 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, authReason 
 
           {mode === 'register' && (
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: '#8e9bb0', marginBottom: '0.4rem', fontWeight: 600 }}>
-                CONFIRM PASSWORD
+              <label style={{ display: 'block', fontSize: '0.75rem', color: '#8e9bb0', marginBottom: '0.35rem', fontWeight: 600 }}>
+                CONFIRM PASSWORD <span style={{ color: '#ff0055' }}>*</span>
               </label>
               <div style={{ position: 'relative' }}>
                 <Lock size={16} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#52607b' }} />
                 <input
                   type="password"
-                  placeholder="Confirm password"
+                  placeholder="Repeat your password"
                   value={formData.confirmPassword}
                   onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
                   style={{
                     width: '100%',
-                    padding: '0.8rem 1rem 0.8rem 2.8rem',
+                    padding: '0.75rem 1rem 0.75rem 2.8rem',
                     backgroundColor: '#121624',
                     border: '1px solid rgba(255, 255, 255, 0.1)',
                     borderRadius: '8px',
@@ -289,12 +501,15 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, authReason 
 
           <button
             type="submit"
+            disabled={isLoading}
             className="glow-btn"
             style={{
               marginTop: '0.5rem',
               padding: '0.9rem',
-              background: 'linear-gradient(135deg, #00f0ff 0%, #7000ff 100%)',
-              color: '#000',
+              background: mode === 'login' 
+                ? 'linear-gradient(135deg, #00f0ff 0%, #7000ff 100%)' 
+                : 'linear-gradient(135deg, #ff0055 0%, #7000ff 100%)',
+              color: mode === 'login' ? '#000' : '#fff',
               border: 'none',
               borderRadius: '8px',
               fontWeight: 900,
@@ -303,38 +518,42 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, authReason 
               alignItems: 'center',
               justifyContent: 'center',
               gap: '0.5rem',
-              cursor: 'pointer'
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              opacity: isLoading ? 0.7 : 1
             }}
           >
-            {mode === 'login' ? 'LOG IN' : 'CREATE ACCOUNT'} <ArrowRight size={18} />
+            {isLoading ? (
+              <span>VALIDATING CREDENTIALS...</span>
+            ) : mode === 'login' ? (
+              <><span>SIGN IN</span> <ArrowRight size={18} /></>
+            ) : (
+              <><span>CREATE ACCOUNT & SIGN IN</span> <CheckCircle2 size={18} /></>
+            )}
           </button>
         </form>
 
         {/* Mode Switcher Footer */}
         <div style={{ textAlign: 'center', marginTop: '1.2rem', paddingTop: '1rem', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
           <span style={{ fontSize: '0.82rem', color: '#8e9bb0' }}>
-            {mode === 'login' ? "Don't have an account? " : "Already have an account? "}
+            {mode === 'login' ? "Don't have an account yet? " : "Already registered your account? "}
           </span>
           <button
-            onClick={() => {
-              setMode(mode === 'login' ? 'register' : 'login');
-              setErrorMessage('');
-            }}
+            type="button"
+            onClick={() => handleModeSwitch(mode === 'login' ? 'register' : 'login')}
             style={{
               background: 'none',
               border: 'none',
-              color: '#00f0ff',
+              color: mode === 'login' ? '#00f0ff' : '#ff0055',
               fontSize: '0.82rem',
-              fontWeight: 700,
+              fontWeight: 800,
               cursor: 'pointer',
               textDecoration: 'underline'
             }}
           >
-            {mode === 'login' ? 'Sign Up' : 'Log In'}
+            {mode === 'login' ? 'Create an Account (Sign Up)' : 'Sign In with Password'}
           </button>
         </div>
       </div>
     </div>
   );
 }
-

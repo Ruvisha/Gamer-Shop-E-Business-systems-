@@ -252,7 +252,20 @@ export default function Navbar({
                 borderRadius: '12px',
                 border: isAdmin ? '1px solid rgba(255, 0, 100, 0.5)' : '1px solid rgba(0, 240, 255, 0.3)'
               }}>
-                <img src={user.avatar} alt={user.name} style={{ width: '28px', height: '28px', borderRadius: '50%', border: isAdmin ? '1px solid #ff0066' : '1px solid #00f0ff' }} />
+                <div style={{
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: isAdmin ? 'rgba(255, 0, 102, 0.15)' : 'rgba(0, 240, 255, 0.15)',
+                  border: isAdmin ? '1px solid #ff0066' : '1px solid #00f0ff',
+                  color: isAdmin ? '#ff0066' : '#00f0ff',
+                  flexShrink: 0
+                }}>
+                  {isAdmin ? <Crown size={15} /> : <User size={15} />}
+                </div>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <span style={{ fontSize: '0.78rem', fontWeight: 800, color: isAdmin ? '#ff0066' : '#00f0ff', lineHeight: 1 }}>
                     {user.name}

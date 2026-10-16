@@ -2,16 +2,13 @@ import express from "express";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import crypto from "crypto";
-import fs from "fs";
 import path from "path";
-import { connectDB, setOnConnectCallback } from "./db.js";
+import { connectDB } from "./db.js";
 import { Product } from "./models/Product.js";
 import { User } from "./models/User.js";
 import { ImageModel } from "./models/Image.js";
 import { Order } from "./models/Order.js";
-import { seedDatabase } from "./seed.js";
-import { products as initialProducts, categories } from "./data/products.js";
-import { resolveLocalImage, getContentTypeFromExt, fetchRemoteImage } from "./imageHelper.js";
+import { DEFAULT_FALLBACK_IMAGE, resolveImageUrl } from "./imageHelper.js";
 
 dotenv.config();
 
@@ -19,15 +16,7 @@ const app = express();
 app.use(express.json({ limit: "15mb" }));
 app.use(express.urlencoded({ limit: "15mb", extended: true }));
 
-// In-memory fallback product store if MongoDB is offline
-let inMemoryProductList = [...initialProducts];
-
-// Connect MongoDB & seed data & store images
-setOnConnectCallback(async () => {
-  console.log("[MongoDB] Connection established/re-established. Verifying database & images...");
-  await seedDatabase();
-});
-
+// Connect MongoDB directly
 connectDB();
 
 // CORS headers for client requests
@@ -44,7 +33,7 @@ app.use((req, res, next) => {
 app.get("/", (req, res) => {
   res.json({
     message: "Gamer Shop E-Business Server API",
-    dbStatus: mongoose.connection.readyState === 1 ? "Connected to MongoDB" : "In-Memory Fallback Mode",
+    dbStatus: mongoose.connection.readyState === 1 ? "Connected to MongoDB" : "Connecting to MongoDB...",
     status: "Active"
   });
 });
@@ -57,30 +46,15 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Helper to format product data and normalize images for client rendering
+// Helper to format product data and normalize image URLs for client rendering
 export function formatProductForClient(product) {
   const p = product.toObject ? product.toObject() : { ...product };
-  let rawImage = p.image || "";
-
-  // Normalize absolute localhost URLs (e.g. http://localhost:3000/api/images/gpu-1) to relative /api/images/gpu-1
-  if (typeof rawImage === "string" && rawImage.includes("/api/images/")) {
-    const parts = rawImage.split("/api/images/");
-    p.image = `/api/images/${parts[1]}`;
-  } else if (
-    !rawImage ||
-    (!rawImage.startsWith("http://") &&
-     !rawImage.startsWith("https://") &&
-     !rawImage.startsWith("data:") &&
-     !rawImage.startsWith("/"))
-  ) {
-    p.image = `/api/images/${p.id || p._id}`;
-  }
-
-  p.fallbackImage = `/images/${p.id || 'gpu-1'}.jpg`;
+  p.image = resolveImageUrl(p.image);
+  p.fallbackImage = resolveImageUrl(p.fallbackImage || p.image);
   return p;
 }
 
-// MONGODB IMAGE SERVER ENDPOINT: GET /api/images/:id
+// MONGODB IMAGE REDIRECT ENDPOINT: GET /api/images/:id
 app.get("/api/images/:id", async (req, res) => {
   let { id } = req.params;
   try {
@@ -89,68 +63,9 @@ app.get("/api/images/:id", async (req, res) => {
 
   const cleanId = id.replace(/\.(jpg|jpeg|png|webp|gif)$/i, "");
 
-  // 1. If MongoDB is connected, query images collection
-  if (mongoose.connection.readyState === 1) {
-    try {
+  try {
+    if (mongoose.connection.readyState === 1) {
       const isValidOid = mongoose.Types.ObjectId.isValid(id);
-
-      const imgDoc = await ImageModel.findOne({
-        $or: [
-          { imageId: id },
-          { imageId: cleanId },
-          { filename: id },
-          { filename: path.basename(id) },
-          { filename: `${cleanId}.jpg` },
-          ...(isValidOid ? [{ _id: id }] : [])
-        ]
-      });
-
-      if (imgDoc) {
-        // Serve binary data directly from MongoDB if present
-        if (imgDoc.data) {
-          let binaryBuf = null;
-          if (Buffer.isBuffer(imgDoc.data)) {
-            binaryBuf = imgDoc.data;
-          } else if (imgDoc.data?.value && typeof imgDoc.data.value === "function") {
-            binaryBuf = imgDoc.data.value(true);
-          } else if (imgDoc.data?.buffer) {
-            binaryBuf = Buffer.from(imgDoc.data.buffer);
-          } else if (typeof imgDoc.data === "string") {
-            const clean = imgDoc.data.replace(/^data:image\/\w+;base64,/, "");
-            binaryBuf = Buffer.from(clean, "base64");
-          }
-
-          if (binaryBuf && binaryBuf.length > 0) {
-            res.setHeader("Content-Type", imgDoc.contentType || "image/jpeg");
-            res.setHeader("Cache-Control", "public, max-age=86400");
-            return res.send(binaryBuf);
-          }
-        }
-
-        // If imgDoc specifies a local file path on disk (e.g. edited in MongoDB Compass)
-        const localFilePath = resolveLocalImage(
-          imgDoc.originalUrl || imgDoc.filePath || "",
-          imgDoc.filename || id
-        );
-        if (localFilePath) {
-          try {
-            const fileBuf = fs.readFileSync(localFilePath);
-            imgDoc.data = fileBuf;
-            imgDoc.contentType = getContentTypeFromExt(localFilePath, imgDoc.contentType || "image/jpeg");
-            await imgDoc.save();
-            res.setHeader("Content-Type", imgDoc.contentType);
-            res.setHeader("Cache-Control", "public, max-age=86400");
-            return res.send(fileBuf);
-          } catch (e) {}
-        }
-
-        // If imgDoc has a remote URL
-        if (imgDoc.originalUrl && imgDoc.originalUrl.startsWith("http")) {
-          return res.redirect(imgDoc.originalUrl);
-        }
-      }
-
-      // 2. Look up in products collection
       const dbProduct = await Product.findOne({
         $or: [
           { id: id },
@@ -159,101 +74,45 @@ app.get("/api/images/:id", async (req, res) => {
         ]
       });
 
-      if (dbProduct && dbProduct.image) {
-        // If product has binary data
-        if (Buffer.isBuffer(dbProduct.image) || (dbProduct.image?.buffer)) {
-          const buf = Buffer.isBuffer(dbProduct.image) ? dbProduct.image : Buffer.from(dbProduct.image.buffer);
-          res.setHeader("Content-Type", "image/jpeg");
-          res.setHeader("Cache-Control", "public, max-age=86400");
-          return res.send(buf);
-        }
-
-        // If product has Base64
-        if (typeof dbProduct.image === "string" && dbProduct.image.startsWith("data:image/")) {
-          const clean = dbProduct.image.replace(/^data:image\/\w+;base64,/, "");
-          const buffer = Buffer.from(clean, "base64");
-          res.setHeader("Content-Type", "image/jpeg");
-          res.setHeader("Cache-Control", "public, max-age=86400");
-          return res.send(buffer);
-        }
-
-        // If product references a local disk file
-        if (typeof dbProduct.image === "string") {
-          const localProductFile = resolveLocalImage("", dbProduct.image);
-          if (localProductFile) {
-            try {
-              const fileBuf = fs.readFileSync(localProductFile);
-              res.setHeader("Content-Type", getContentTypeFromExt(localProductFile));
-              res.setHeader("Cache-Control", "public, max-age=86400");
-              return res.send(fileBuf);
-            } catch (e) {}
-          }
-
-          // If product has a direct external web URL (not /api/images/)
-          if (dbProduct.image.startsWith("http") && !dbProduct.image.includes("/api/images/")) {
-            return res.redirect(dbProduct.image);
-          }
-        }
+      if (dbProduct && dbProduct.image && dbProduct.image.startsWith("http")) {
+        return res.redirect(dbProduct.image);
       }
-    } catch (err) {
-      console.error("[Image Server] Error retrieving image from MongoDB:", err.message);
+
+      const imgDoc = await ImageModel.findOne({
+        $or: [
+          { imageId: id },
+          { imageId: cleanId }
+        ]
+      });
+
+      if (imgDoc && imgDoc.originalUrl && imgDoc.originalUrl.startsWith("http")) {
+        return res.redirect(imgDoc.originalUrl);
+      }
     }
+  } catch (err) {
+    console.error("[Image Server] Error retrieving image from MongoDB:", err.message);
   }
 
-  // 3. Fallback: Check local disk static files in Client/public/images/ and project
-  const candidateFiles = [
-    path.resolve(path.dirname(__filename), "..", "Client", "public", "images", `${id}.jpg`),
-    path.resolve(path.dirname(__filename), "..", "Client", "public", "images", id),
-    path.resolve(path.dirname(__filename), "..", "Client", "public", "images", `${cleanId}.jpg`),
-    resolveLocalImage("", id),
-    resolveLocalImage("", `${id}.jpg`),
-    resolveLocalImage("", `${cleanId}.jpg`),
-    path.resolve(path.dirname(__filename), "..", "Client", "public", "images", "gpu-1.jpg")
-  ];
-
-  for (const f of candidateFiles) {
-    if (f && fs.existsSync(f) && fs.statSync(f).isFile()) {
-      try {
-        const buf = fs.readFileSync(f);
-        res.setHeader("Content-Type", getContentTypeFromExt(f));
-        res.setHeader("Cache-Control", "public, max-age=86400");
-        return res.send(buf);
-      } catch (e) {}
-    }
-  }
-
-  // 4. Fallback from in-memory product list
-  const product = inMemoryProductList.find(p => p.id === id || p.id === cleanId);
-  if (product && product.image && product.image.startsWith("http") && !product.image.includes("/api/images/")) {
-    return res.redirect(product.image);
-  }
-
-  return res.redirect("https://images.unsplash.com/photo-1587202372775-e229f172b9d7?auto=format&fit=crop&w=800&q=80");
+  return res.redirect(DEFAULT_FALLBACK_IMAGE);
 });
 
-// MONGODB IMAGE UPLOAD ENDPOINT: POST /api/images/upload
+// IMAGE URL REGISTRATION ENDPOINT: POST /api/images/upload
 app.post("/api/images/upload", async (req, res) => {
-  const { imageId, base64Data, contentType = "image/jpeg", originalUrl } = req.body;
-  
-  if (!base64Data) {
-    return res.status(400).json({ error: "Base64 image data is required." });
-  }
-
+  const { imageId, imageUrl, originalUrl } = req.body;
   const id = imageId || `img-${Date.now()}`;
-  try {
-    const cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, "");
-    const buffer = Buffer.from(cleanBase64, "base64");
+  const targetUrl = imageUrl || originalUrl || DEFAULT_FALLBACK_IMAGE;
 
+  try {
     if (mongoose.connection.readyState === 1) {
       const savedImg = await ImageModel.findOneAndUpdate(
         { imageId: id },
-        { imageId: id, contentType, data: buffer, originalUrl: originalUrl || "" },
+        { imageId: id, originalUrl: targetUrl },
         { upsert: true, new: true }
       );
       return res.status(201).json({
         success: true,
-        message: "Image stored successfully in MongoDB database",
-        imageUrl: `http://localhost:3000/api/images/${savedImg.imageId}`,
+        message: "Image URL stored in MongoDB",
+        imageUrl: savedImg.originalUrl,
         imageId: savedImg.imageId
       });
     }
@@ -263,80 +122,178 @@ app.post("/api/images/upload", async (req, res) => {
   }
 });
 
-// Authentication Endpoint (Persists users & logs login details in MongoDB)
-app.post("/api/auth/login", async (req, res) => {
-  const { email, password, role = "user" } = req.body;
+// Password hashing and validation utilities
+function hashPassword(password) {
+  return crypto.createHash("sha256").update(password + "_GAMER_SHOP_SECURE_SALT").digest("hex");
+}
+
+function verifyPassword(inputPassword, storedPassword) {
+  if (!storedPassword || !inputPassword) return false;
+  if (storedPassword === inputPassword) return true; // Plaintext compatibility fallback
+  return storedPassword === hashPassword(inputPassword);
+}
+
+// REGISTER / SIGN UP ENDPOINT: POST /api/auth/register (or /api/auth/signup)
+app.post(["/api/auth/register", "/api/auth/signup"], async (req, res) => {
+  const { email, password, gamerTag, name, phone, role = "user" } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({
       success: false,
-      error: "Email and password are required for login safety."
+      error: "Email and password are required to create an account."
     });
   }
 
-  const userRole = role === "admin" || email.toLowerCase().includes("admin") ? "admin" : "user";
-  const userEmail = email.trim();
-  const userName = userRole === "admin" ? "Admin Manager" : userEmail.split("@")[0];
+  const userEmail = email.trim().toLowerCase();
+  const userName = (gamerTag || name || userEmail.split("@")[0]).trim();
+  const userRole = role === "admin" || userEmail.includes("admin") ? "admin" : "user";
 
-  const loginLog = {
-    loginTime: new Date(),
-    ip: req.ip || req.headers['x-forwarded-for'] || "127.0.0.1",
-    userAgent: req.headers['user-agent'] || "Browser Client",
-    success: true
-  };
-
-  let userProfile;
-
-  if (mongoose.connection.readyState === 1) {
-    try {
-      let dbUser = await User.findOne({ email: userEmail });
-      if (!dbUser) {
-        dbUser = await User.create({
-          name: userName,
-          email: userEmail,
-          password: password || "password123",
-          role: userRole,
-          avatar: userRole === "admin"
-            ? "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"
-            : "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80",
-          loginLogs: [loginLog]
-        });
-      } else {
-        dbUser.loginLogs.push(loginLog);
-        await dbUser.save();
-      }
-
-      userProfile = {
-        id: dbUser._id,
-        name: dbUser.name,
-        email: dbUser.email,
-        role: dbUser.role,
-        avatar: dbUser.avatar,
-        loginLogsCount: dbUser.loginLogs.length,
-        lastLogin: loginLog.loginTime
-      };
-    } catch (err) {
-      console.error("[Auth] MongoDB user logging error:", err.message);
-    }
+  if (password.length < 6) {
+    return res.status(400).json({
+      success: false,
+      error: "Password must be at least 6 characters long."
+    });
   }
 
-  if (!userProfile) {
-    userProfile = {
-      id: `user-${Date.now()}`,
+  if (mongoose.connection.readyState !== 1) {
+    await connectDB();
+  }
+
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      success: false,
+      error: "Database is connecting. Please try again shortly."
+    });
+  }
+
+  try {
+    const existingUser = await User.findOne({ email: userEmail });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        isRegistered: true,
+        error: "This email is already registered. Please sign in with your password."
+      });
+    }
+
+    const loginLog = {
+      loginTime: new Date(),
+      ip: req.ip || req.headers['x-forwarded-for'] || "127.0.0.1",
+      userAgent: req.headers['user-agent'] || "Browser Client",
+      success: true
+    };
+
+    const newUser = await User.create({
       name: userName,
       email: userEmail,
+      password: hashPassword(password),
+      phone: phone || "",
       role: userRole,
-      avatar: userRole === "admin" 
-        ? "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"
-        : "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"
+      loginLogs: [loginLog]
+    });
+
+    const userProfile = {
+      id: newUser._id,
+      name: newUser.name,
+      email: newUser.email,
+      phone: newUser.phone,
+      role: newUser.role,
+      loginLogsCount: 1,
+      lastLogin: loginLog.loginTime
     };
+
+    console.log(`[Auth Register] New user registered in MongoDB: ${newUser.email} (${newUser.role})`);
+
+    return res.status(201).json({
+      success: true,
+      message: `Account created successfully! Welcome to Gamer Shop, ${userName}.`,
+      user: userProfile
+    });
+  } catch (err) {
+    console.error("[Auth Register Error]:", err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// LOGIN / SIGN IN ENDPOINT: POST /api/auth/login (or /api/auth/signin)
+app.post(["/api/auth/login", "/api/auth/signin"], async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({
+      success: false,
+      error: "Email and password are required to sign in."
+    });
   }
 
-  res.json({
-    success: true,
-    message: `Logged in successfully as ${userRole.toUpperCase()}`,
-    user: userProfile
-  });
+  const userEmail = email.trim().toLowerCase();
+
+  if (mongoose.connection.readyState !== 1) {
+    await connectDB();
+  }
+
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      success: false,
+      error: "Database is connecting. Please try again shortly."
+    });
+  }
+
+  try {
+    const dbUser = await User.findOne({ email: userEmail });
+    if (!dbUser) {
+      return res.status(404).json({
+        success: false,
+        isRegistered: false,
+        error: "No account found with this email. Please click Sign Up to register."
+      });
+    }
+
+    // Validate password against stored database password
+    const isPasswordValid = verifyPassword(password, dbUser.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        error: "Incorrect password. Please verify your credentials and try again."
+      });
+    }
+
+    // If existing account had plaintext password, upgrade it to hashed
+    if (dbUser.password === password) {
+      dbUser.password = hashPassword(password);
+    }
+
+    const loginLog = {
+      loginTime: new Date(),
+      ip: req.ip || req.headers['x-forwarded-for'] || "127.0.0.1",
+      userAgent: req.headers['user-agent'] || "Browser Client",
+      success: true
+    };
+
+    dbUser.loginLogs.push(loginLog);
+    await dbUser.save();
+
+    const userProfile = {
+      id: dbUser._id,
+      name: dbUser.name,
+      email: dbUser.email,
+      phone: dbUser.phone || "",
+      role: dbUser.role,
+      loginLogsCount: dbUser.loginLogs.length,
+      lastLogin: loginLog.loginTime
+    };
+
+    console.log(`[Auth Login] User authenticated from MongoDB: ${dbUser.email} (${dbUser.role})`);
+
+    return res.json({
+      success: true,
+      message: `Signed in successfully as ${dbUser.role.toUpperCase()}`,
+      user: userProfile
+    });
+  } catch (err) {
+    console.error("[Auth Login Error]:", err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // GET all users (with MongoDB login logs details for admin view)
@@ -352,76 +309,124 @@ app.get("/api/users", async (req, res) => {
   res.json({ message: "MongoDB offline. Users logged in memory." });
 });
 
-// GET all products or search/filter (MongoDB supported)
+// GET all products or search/filter (Direct MongoDB access)
 app.get("/api/products", async (req, res) => {
-  const { category, search } = req.query;
+  const { category, search, isFlashSale } = req.query;
 
-  if (mongoose.connection.readyState === 1) {
-    try {
-      let filter = {};
-      if (category && category !== 'all') {
-        filter.category = category;
-      }
-      if (search) {
-        const regex = new RegExp(search, 'i');
-        filter.$or = [
-          { name: regex },
-          { description: regex },
-          { brand: regex }
-        ];
-      }
-
-      const productsFromDb = await Product.find(filter).sort({ createdAt: -1 });
-      return res.json(productsFromDb.map(formatProductForClient));
-    } catch (err) {
-      console.error("[Products] MongoDB fetch error, falling back:", err.message);
+  try {
+    let filter = {};
+    if (category && category !== 'all') {
+      filter.category = category;
     }
-  }
+    if (isFlashSale === 'true') {
+      filter.isFlashSale = true;
+    }
+    if (search) {
+      const regex = new RegExp(search, 'i');
+      filter.$or = [
+        { name: regex },
+        { description: regex },
+        { brand: regex }
+      ];
+    }
 
-  // Fallback if MongoDB is offline
-  let result = inMemoryProductList;
-  if (category && category !== 'all') {
-    result = result.filter(p => p.category === category);
+    const productsFromDb = await Product.find(filter).sort({ createdAt: -1 });
+    return res.json(productsFromDb.map(formatProductForClient));
+  } catch (err) {
+    console.error("[Products] MongoDB fetch error:", err.message);
+    res.status(500).json({ error: "Failed to fetch products from MongoDB", details: err.message });
   }
-  if (search) {
-    const query = search.toLowerCase();
-    result = result.filter(p => 
-      p.name.toLowerCase().includes(query) || 
-      p.description?.toLowerCase().includes(query) ||
-      p.brand?.toLowerCase().includes(query)
-    );
-  }
-  res.json(result.map(formatProductForClient));
 });
 
-// GET product by ID
+// GET product by ID (Direct MongoDB access)
 app.get("/api/products/:id", async (req, res) => {
   const { id } = req.params;
 
-  if (mongoose.connection.readyState === 1) {
-    try {
-      const dbProduct = await Product.findOne({
-        $or: [{ id: id }, { _id: mongoose.Types.ObjectId.isValid(id) ? id : null }]
-      });
-      if (dbProduct) return res.json(formatProductForClient(dbProduct));
-    } catch (err) {
-      console.error("[Products] MongoDB findById error:", err.message);
+  try {
+    const dbProduct = await Product.findOne({
+      $or: [{ id: id }, ...(mongoose.Types.ObjectId.isValid(id) ? [{ _id: id }] : [])]
+    });
+    if (dbProduct) {
+      return res.json(formatProductForClient(dbProduct));
     }
+    return res.status(404).json({ error: "Product not found in MongoDB database" });
+  } catch (err) {
+    console.error("[Products] MongoDB findById error:", err.message);
+    res.status(500).json({ error: err.message });
   }
-
-  const product = inMemoryProductList.find(p => p.id === id);
-  if (!product) {
-    return res.status(404).json({ error: "Product not found" });
-  }
-  res.json(formatProductForClient(product));
 });
 
-// GET categories
-app.get("/api/categories", (req, res) => {
-  res.json(categories);
+// GET categories directly derived from MongoDB products catalog
+app.get("/api/categories", async (req, res) => {
+  try {
+    const categoryStats = await Product.aggregate([
+      { $group: { _id: "$category", count: { $sum: 1 } } }
+    ]);
+    const totalCount = await Product.countDocuments();
+    const categoryMeta = {
+      all: { name: "All Products", icon: "LayoutGrid" },
+      gpu: { name: "Graphics Cards", icon: "Cpu" },
+      cpu: { name: "Processors", icon: "Zap" },
+      ram: { name: "RAM & Memory", icon: "MemoryStick" },
+      mb: { name: "Motherboards", icon: "CircuitBoard" },
+      storage: { name: "SSDs & Storage", icon: "HardDrive" },
+      cooling: { name: "Liquid Cooling", icon: "Fan" },
+      psu: { name: "Power Supplies", icon: "BatteryCharging" },
+      case: { name: "PC Cases", icon: "Box" }
+    };
+
+    const categoriesList = [
+      { id: "all", name: "All Products", icon: "LayoutGrid", count: totalCount }
+    ];
+
+    categoryStats.forEach(stat => {
+      const meta = categoryMeta[stat._id] || { name: String(stat._id).toUpperCase(), icon: "Cpu" };
+      categoriesList.push({
+        id: stat._id,
+        name: meta.name,
+        icon: meta.icon,
+        count: stat.count
+      });
+    });
+
+    res.json(categoriesList);
+  } catch (err) {
+    console.error("[Categories] MongoDB aggregate error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// POST /api/products/:id/reviews (Submit Customer Review to MongoDB)
+// GET customer testimonials directly from MongoDB reviews
+app.get("/api/testimonials", async (req, res) => {
+  try {
+    const prodsWithReviews = await Product.find({ "reviews.0": { $exists: true } }).select("id name brand reviews");
+    const testimonials = [];
+    let counter = 1;
+
+    for (const p of prodsWithReviews) {
+      for (const r of (p.reviews || [])) {
+        testimonials.push({
+          id: counter++,
+          author: r.userName || "Verified Gamer",
+          role: "PC Enthusiast & Gamer",
+          rating: r.rating || 5,
+          comment: r.comment,
+          verified: true,
+          product: p.name
+        });
+        if (testimonials.length >= 6) break;
+      }
+      if (testimonials.length >= 6) break;
+    }
+
+    res.json(testimonials);
+  } catch (err) {
+    console.error("[Testimonials] MongoDB fetch error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/products/:id/reviews (Submit Customer Review directly to MongoDB)
 app.post("/api/products/:id/reviews", async (req, res) => {
   const { id } = req.params;
   const { userName, userEmail, rating, title, comment } = req.body;
@@ -439,51 +444,34 @@ app.post("/api/products/:id/reviews", async (req, res) => {
     createdAt: new Date()
   };
 
-  if (mongoose.connection.readyState === 1) {
-    try {
-      const dbProduct = await Product.findOne({
-        $or: [{ id: id }, { _id: mongoose.Types.ObjectId.isValid(id) ? id : null }]
-      });
-
-      if (dbProduct) {
-        if (!dbProduct.reviews) dbProduct.reviews = [];
-        dbProduct.reviews.unshift(reviewItem);
-        const totalRating = dbProduct.reviews.reduce((sum, r) => sum + r.rating, 0);
-        dbProduct.reviewsCount = dbProduct.reviews.length;
-        dbProduct.rating = Number((totalRating / dbProduct.reviews.length).toFixed(1));
-
-        await dbProduct.save();
-        return res.json({
-          success: true,
-          message: "Review stored successfully in MongoDB!",
-          product: dbProduct
-        });
-      }
-    } catch (err) {
-      console.error("[Reviews] MongoDB review submit error:", err.message);
-      return res.status(500).json({ error: err.message });
-    }
-  }
-
-  // Fallback in-memory review addition
-  const prodIndex = inMemoryProductList.findIndex(p => p.id === id);
-  if (prodIndex !== -1) {
-    if (!inMemoryProductList[prodIndex].reviews) {
-      inMemoryProductList[prodIndex].reviews = [];
-    }
-    inMemoryProductList[prodIndex].reviews.unshift(reviewItem);
-    inMemoryProductList[prodIndex].reviewsCount = inMemoryProductList[prodIndex].reviews.length;
-    res.json({
-      success: true,
-      message: "Review submitted (in-memory)",
-      product: inMemoryProductList[prodIndex]
+  try {
+    const dbProduct = await Product.findOne({
+      $or: [{ id: id }, ...(mongoose.Types.ObjectId.isValid(id) ? [{ _id: id }] : [])]
     });
-  } else {
-    res.status(404).json({ error: "Product not found" });
+
+    if (!dbProduct) {
+      return res.status(404).json({ error: "Product not found in MongoDB database" });
+    }
+
+    if (!dbProduct.reviews) dbProduct.reviews = [];
+    dbProduct.reviews.unshift(reviewItem);
+    const totalRating = dbProduct.reviews.reduce((sum, r) => sum + r.rating, 0);
+    dbProduct.reviewsCount = dbProduct.reviews.length;
+    dbProduct.rating = Number((totalRating / dbProduct.reviews.length).toFixed(1));
+
+    await dbProduct.save();
+    return res.json({
+      success: true,
+      message: "Review stored successfully in MongoDB!",
+      product: formatProductForClient(dbProduct)
+    });
+  } catch (err) {
+    console.error("[Reviews] MongoDB review submit error:", err.message);
+    return res.status(500).json({ error: err.message });
   }
 });
 
-// ADMIN ONLY: POST /api/products (Create Product in MongoDB and store image in MongoDB)
+// ADMIN ONLY: POST /api/products (Create Product directly in MongoDB)
 app.post("/api/products", async (req, res) => {
   const { name, category, brand, price, originalPrice, stock, image, description, specs, isFeatured, isFlashSale, tag, wattage } = req.body;
   
@@ -492,51 +480,7 @@ app.post("/api/products", async (req, res) => {
   }
 
   const productId = `custom-${Date.now()}`;
-  let storedImageUrl = `http://localhost:3000/api/images/${productId}`;
-
-  // Process & store image binary in MongoDB
-  if (image && mongoose.connection.readyState === 1) {
-    try {
-      let buffer;
-      let contentType = "image/jpeg";
-
-      const localFile = resolveLocalImage("", image);
-      if (localFile) {
-        try {
-          buffer = fs.readFileSync(localFile);
-          contentType = getContentTypeFromExt(localFile);
-        } catch (e) {}
-      } else if (image.startsWith("data:image/")) {
-        const matches = image.match(/^data:(image\/\w+);base64,(.+)$/);
-        if (matches) {
-          contentType = matches[1];
-          buffer = Buffer.from(matches[2], "base64");
-        }
-      } else if (image.startsWith("http") && !image.includes("/api/images/")) {
-        const imgRes = await fetch(image, { signal: AbortSignal.timeout(6000) });
-        if (imgRes.ok) {
-          const arr = await imgRes.arrayBuffer();
-          contentType = imgRes.headers.get("content-type") || "image/jpeg";
-          buffer = Buffer.from(arr);
-        }
-      }
-
-      if (buffer) {
-        await ImageModel.create({
-          imageId: productId,
-          filename: `${productId}.jpg`,
-          contentType,
-          data: buffer,
-          originalUrl: image
-        });
-      } else {
-        storedImageUrl = image;
-      }
-    } catch (err) {
-      console.warn("[Products] Image storage in MongoDB skipped:", err.message);
-      storedImageUrl = image;
-    }
-  }
+  const validImage = resolveImageUrl(image);
 
   const newProductData = {
     id: productId,
@@ -552,126 +496,78 @@ app.post("/api/products", async (req, res) => {
     isFlashSale: Boolean(isFlashSale),
     isFeatured: isFeatured !== undefined ? Boolean(isFeatured) : true,
     tag: tag || '',
-    image: storedImageUrl,
+    image: validImage,
+    fallbackImage: validImage,
     description: description || 'High-performance PC gaming part.',
     specs: specs || { memory: 'Standard', interface: 'PCIe 4.0' }
   };
 
-  if (mongoose.connection.readyState === 1) {
-    try {
-      const createdProduct = await Product.create(newProductData);
-      return res.status(201).json({ success: true, message: "Product and image stored successfully in MongoDB", product: createdProduct });
-    } catch (err) {
-      console.error("[Products] MongoDB create error:", err.message);
-    }
+  try {
+    const createdProduct = await Product.create(newProductData);
+    return res.status(201).json({
+      success: true,
+      message: "Product created directly in MongoDB",
+      product: formatProductForClient(createdProduct)
+    });
+  } catch (err) {
+    console.error("[Products] MongoDB create error:", err.message);
+    res.status(500).json({ error: err.message });
   }
-
-  inMemoryProductList.unshift(newProductData);
-  res.status(201).json({ success: true, message: "Product created successfully (in-memory)", product: newProductData });
 });
 
-// ADMIN ONLY: PUT /api/products/:id (Update Product & Image in MongoDB)
+// ADMIN ONLY: PUT /api/products/:id (Update Product directly in MongoDB)
 app.put("/api/products/:id", async (req, res) => {
   const { id } = req.params;
   let updatePayload = { ...req.body };
 
-  if (req.body.image && mongoose.connection.readyState === 1) {
-    try {
-      let buffer;
-      let contentType = "image/jpeg";
-      const imageStr = req.body.image;
+  if (updatePayload.image) {
+    updatePayload.image = resolveImageUrl(updatePayload.image);
+    updatePayload.fallbackImage = updatePayload.image;
+  }
+  if (updatePayload.price) {
+    updatePayload.price = parseFloat(updatePayload.price);
+  }
+  if (updatePayload.stock !== undefined) {
+    updatePayload.stock = parseInt(updatePayload.stock, 10);
+  }
 
-      const localFile = resolveLocalImage("", imageStr);
-      if (localFile) {
-        try {
-          buffer = fs.readFileSync(localFile);
-          contentType = getContentTypeFromExt(localFile);
-        } catch (e) {}
-      } else if (imageStr.startsWith("data:image/")) {
-        const matches = imageStr.match(/^data:(image\/\w+);base64,(.+)$/);
-        if (matches) {
-          contentType = matches[1];
-          buffer = Buffer.from(matches[2], "base64");
-        }
-      } else if (imageStr.startsWith("http") && !imageStr.includes("/api/images/")) {
-        const imgRes = await fetch(imageStr, { signal: AbortSignal.timeout(6000) });
-        if (imgRes.ok) {
-          const arr = await imgRes.arrayBuffer();
-          contentType = imgRes.headers.get("content-type") || "image/jpeg";
-          buffer = Buffer.from(arr);
-        }
-      }
-
-      if (buffer) {
-        await ImageModel.findOneAndUpdate(
-          { imageId: id },
-          { imageId: id, contentType, data: buffer, originalUrl: imageStr },
-          { upsert: true }
-        );
-        updatePayload.image = `http://localhost:3000/api/images/${id}`;
-      }
-    } catch (err) {
-      console.warn("[Products] Image update error:", err.message);
+  try {
+    const updatedDbProduct = await Product.findOneAndUpdate(
+      { $or: [{ id: id }, ...(mongoose.Types.ObjectId.isValid(id) ? [{ _id: id }] : [])] },
+      { $set: updatePayload },
+      { new: true }
+    );
+    if (!updatedDbProduct) {
+      return res.status(404).json({ error: "Product not found in MongoDB database" });
     }
+    return res.json({
+      success: true,
+      message: "Product updated successfully in MongoDB",
+      product: formatProductForClient(updatedDbProduct)
+    });
+  } catch (err) {
+    console.error("[Products] MongoDB update error:", err.message);
+    res.status(500).json({ error: err.message });
   }
-
-  if (mongoose.connection.readyState === 1) {
-    try {
-      const updatedDbProduct = await Product.findOneAndUpdate(
-        { $or: [{ id: id }, { _id: mongoose.Types.ObjectId.isValid(id) ? id : null }] },
-        { $set: updatePayload },
-        { new: true }
-      );
-      if (updatedDbProduct) {
-        return res.json({ success: true, message: "Product updated successfully in MongoDB", product: updatedDbProduct });
-      }
-    } catch (err) {
-      console.error("[Products] MongoDB update error:", err.message);
-    }
-  }
-
-  const index = inMemoryProductList.findIndex(p => p.id === id);
-  if (index === -1) {
-    return res.status(404).json({ error: "Product not found" });
-  }
-
-  const updatedProduct = {
-    ...inMemoryProductList[index],
-    ...updatePayload,
-    price: updatePayload.price ? parseFloat(updatePayload.price) : inMemoryProductList[index].price,
-    stock: updatePayload.stock !== undefined ? parseInt(updatePayload.stock, 10) : inMemoryProductList[index].stock
-  };
-
-  inMemoryProductList[index] = updatedProduct;
-  res.json({ success: true, message: "Product updated successfully", product: updatedProduct });
 });
 
-// ADMIN ONLY: DELETE /api/products/:id (Delete Product & Image from MongoDB)
+// ADMIN ONLY: DELETE /api/products/:id (Delete Product directly from MongoDB)
 app.delete("/api/products/:id", async (req, res) => {
   const { id } = req.params;
 
-  if (mongoose.connection.readyState === 1) {
-    try {
-      await ImageModel.findOneAndDelete({ imageId: id });
-      const deletedProduct = await Product.findOneAndDelete({
-        $or: [{ id: id }, { _id: mongoose.Types.ObjectId.isValid(id) ? id : null }]
-      });
-      if (deletedProduct) {
-        return res.json({ success: true, message: "Product and image deleted successfully from MongoDB", id });
-      }
-    } catch (err) {
-      console.error("[Products] MongoDB delete error:", err.message);
+  try {
+    await ImageModel.findOneAndDelete({ imageId: id });
+    const deletedProduct = await Product.findOneAndDelete({
+      $or: [{ id: id }, ...(mongoose.Types.ObjectId.isValid(id) ? [{ _id: id }] : [])]
+    });
+    if (deletedProduct) {
+      return res.json({ success: true, message: "Product deleted directly from MongoDB", id });
     }
+    return res.status(404).json({ error: "Product not found in MongoDB database" });
+  } catch (err) {
+    console.error("[Products] MongoDB delete error:", err.message);
+    res.status(500).json({ error: err.message });
   }
-
-  const initialLength = inMemoryProductList.length;
-  inMemoryProductList = inMemoryProductList.filter(p => p.id !== id);
-
-  if (inMemoryProductList.length === initialLength) {
-    return res.status(404).json({ error: "Product not found" });
-  }
-
-  res.json({ success: true, message: "Product deleted successfully", id });
 });
 
 // ==========================================
@@ -695,6 +591,10 @@ app.post("/api/payment/checkout-data", async (req, res) => {
 
     if (!amount || isNaN(amount) || amount <= 0) {
       return res.status(400).json({ error: "Valid payment amount is required." });
+    }
+
+    if (Number(amount) > 5000000) {
+      return res.status(400).json({ error: "Card transaction limit is Rs. 5,000,000. Please contact our support team." });
     }
 
     const orderId = `#${Math.floor(100000000000 + Math.random() * 900000000000)}`;
@@ -787,7 +687,7 @@ app.post("/api/payment/notify", async (req, res) => {
 
     console.log(`[PayHere IPN Received] Order: ${order_id}, Status Code: ${status_code}, Amount: ${payhere_amount}`);
 
-const PAYHERE_MERCHANT_SECRET = process.env.PAYHERE_MERCHANT_SECRET || 'NDE2OTc1MTU3NDE1MDk4MDc5MTM2MzU2MjkwMjM4ODY1NDg2MDU=';
+    const hashedSecret = crypto.createHash("md5").update(PAYHERE_MERCHANT_SECRET).digest("hex").toUpperCase();
     const hashString = merchant_id + order_id + payhere_amount + payhere_currency + status_code + hashedSecret;
     const expectedHash = crypto.createHash("md5").update(hashString).digest("hex").toUpperCase();
 
