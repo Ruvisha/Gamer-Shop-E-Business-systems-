@@ -537,6 +537,7 @@ export const reviews = [
   {
     "id": 1,
     "author": "Alex \"Vortex\" Vance",
+    "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80",
     "role": "Esports Streamer & Competitive Gamer",
     "rating": 5,
     "comment": "Gamer Shop delivered my RTX 4090 and 7950X3D in less than 24 hours. The custom PC builder tool made checking motherboard & wattage compatibility effortless! My rig gets 360+ FPS effortlessly now.",
@@ -546,6 +547,7 @@ export const reviews = [
   {
     "id": 2,
     "author": "Elena Rostova",
+    "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80",
     "role": "3D Animator & PC Enthusiast",
     "rating": 5,
     "comment": "The pricing on Gamer Shop is unbeatable! Saved over Rs. 90,000 on my full watercooled Lian Li build. Customer support answered my technical questions regarding PCIe 5.0 NVMe bandwidth instantly.",
@@ -555,6 +557,7 @@ export const reviews = [
   {
     "id": 3,
     "author": "Marcus Brody",
+    "avatar": "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=150&q=80",
     "role": "Hardware Overclocker",
     "rating": 5,
     "comment": "Gamer Shop is the only vendor I trust for binned high-frequency DDR5 memory and flagship motherboard stock. Packaging was bomb-proof and double buffered.",

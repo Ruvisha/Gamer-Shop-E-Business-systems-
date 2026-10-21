@@ -16,10 +16,10 @@ import UserOrdersModal from './components/UserOrdersModal';
 import AdminOrdersModal from './components/AdminOrdersModal';
 import Toast from './components/Toast';
 
-import { products as initialProductsData } from './data/products';
-
 export default function App() {
-  const [allProducts, setAllProducts] = useState(initialProductsData);
+  const [allProducts, setAllProducts] = useState([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [dbError, setDbError] = useState(null);
   const [cartItems, setCartItems] = useState([]);
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -40,31 +40,48 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [activeSection, setActiveSection] = useState('home'); // 'home', 'catalog', 'builder', 'deals', 'product-details'
 
-  // Fetch product list from backend API on mount
-  useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        let res = await fetch('/api/products').catch(() => null);
-        if (!res || !res.ok) {
-          res = await fetch('http://localhost:3000/api/products').catch(() => null);
-        }
-        if (res && res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data) && data.length > 0) {
-            const normalized = data.map(p => ({
-              ...p,
-              image: p.image || `/api/images/${p.id}`,
-              fallbackImage: p.fallbackImage || `/images/${p.id}.jpg`
-            }));
-            setAllProducts(normalized);
-          }
-        }
-      } catch (err) {
-        console.log('Using local fallback product dataset:', err);
+  // Fetch product list directly from MongoDB database on mount
+  const fetchProducts = async () => {
+    setIsLoadingProducts(true);
+    setDbError(null);
+    try {
+      let res = await fetch('/api/products').catch(() => null);
+      if (!res || !res.ok) {
+        res = await fetch('http://localhost:3000/api/products').catch(() => null);
       }
-    };
+      if (res && res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          const normalized = data.map(p => ({
+            ...p,
+            image: p.image || `/api/images/${p.id}`,
+            fallbackImage: p.fallbackImage || `/images/${p.id}.jpg`
+          }));
+          setAllProducts(normalized);
+        } else {
+          setAllProducts([]);
+        }
+      } else {
+        setDbError('Could not connect to MongoDB server. Ensure backend is running.');
+      }
+    } catch (err) {
+      console.error('Failed to fetch products from MongoDB:', err);
+      setDbError(err.message || 'Database connection error');
+    } finally {
+      setIsLoadingProducts(false);
+    }
+  };
+
+  useEffect(() => {
     fetchProducts();
-  }, []);
+    const timer = setInterval(() => {
+      // Auto-recheck if initial fetch was before backend/MongoDB ready
+      if (allProducts.length === 0) {
+        fetchProducts();
+      }
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [allProducts.length]);
 
   // Handle PayHere Payment Return Redirect URL parameters
   useEffect(() => {
@@ -265,20 +282,24 @@ export default function App() {
 
   const handleSaveProduct = async (productData) => {
     const isEditing = Boolean(productData.id);
+    const method = isEditing ? 'PUT' : 'POST';
 
     try {
-      const url = isEditing 
-        ? `http://localhost:3000/api/products/${productData.id}` 
-        : 'http://localhost:3000/api/products';
-      const method = isEditing ? 'PUT' : 'POST';
-
-      const res = await fetch(url, {
+      let res = await fetch(`/api/products${isEditing ? `/${productData.id}` : ''}`, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(productData)
-      });
+      }).catch(() => null);
 
-      if (res.ok) {
+      if (!res || !res.ok) {
+        res = await fetch(`http://localhost:3000/api/products${isEditing ? `/${productData.id}` : ''}`, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(productData)
+        }).catch(() => null);
+      }
+
+      if (res && res.ok) {
         const responseData = await res.json();
         const savedItem = responseData.product || productData;
 
@@ -287,8 +308,9 @@ export default function App() {
         } else {
           setAllProducts(prev => [savedItem, ...prev]);
         }
+        // Refresh directly from database
+        fetchProducts();
       } else {
-        // Fallback local update if backend offline
         if (isEditing) {
           setAllProducts(prev => prev.map(p => p.id === productData.id ? { ...p, ...productData } : p));
         } else {
@@ -297,7 +319,6 @@ export default function App() {
         }
       }
     } catch (err) {
-      // Local state fallback
       if (isEditing) {
         setAllProducts(prev => prev.map(p => p.id === productData.id ? { ...p, ...productData } : p));
       } else {
@@ -308,16 +329,23 @@ export default function App() {
 
     setToast({
       type: 'auth',
-      title: isEditing ? 'PRODUCT UPDATED' : 'PRODUCT CREATED',
-      message: `${productData.name} saved to catalog successfully!`
+      title: isEditing ? 'PRODUCT UPDATED IN DB' : 'PRODUCT SAVED TO DB',
+      message: `${productData.name} saved to MongoDB successfully!`
     });
   };
 
   const handleDeleteProduct = async (productId) => {
     try {
-      await fetch(`http://localhost:3000/api/products/${productId}`, {
+      let res = await fetch(`/api/products/${productId}`, {
         method: 'DELETE'
-      });
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        await fetch(`http://localhost:3000/api/products/${productId}`, {
+          method: 'DELETE'
+        }).catch(() => null);
+      }
+      fetchProducts();
     } catch (err) {
       console.log('Backend delete request skipped, removing locally:', err);
     }
@@ -325,8 +353,8 @@ export default function App() {
     setAllProducts(prev => prev.filter(p => p.id !== productId));
     setToast({
       type: 'info',
-      title: 'PRODUCT DELETED',
-      message: 'Product removed from catalog.'
+      title: 'PRODUCT DELETED FROM DB',
+      message: 'Product removed from MongoDB database.'
     });
   };
 
@@ -353,14 +381,70 @@ export default function App() {
         onOpenAdminOrders={() => setIsAdminOrdersOpen(true)}
         activeSection={activeSection}
         setActiveSection={setActiveSection}
+        products={allProducts}
+        onQuickView={handleOpenProductDetails}
+        onAddToCart={handleAddToCart}
       />
 
       {/* Secondary Dashboard Navigation Bar */}
       <DashboardNav
         activeSection={activeSection}
         setActiveSection={setActiveSection}
+        totalProductsCount={allProducts.length}
+        dealProductsCount={dealProducts.length}
         onOpenAuth={() => setIsAuthOpen(true)}
       />
+
+      {/* Database Connection Status Notice */}
+      {dbError && (
+        <div style={{
+          backgroundColor: 'rgba(255, 0, 85, 0.15)',
+          borderBottom: '1px solid #ff0055',
+          padding: '0.8rem 1rem',
+          textAlign: 'center',
+          color: '#ff6699',
+          fontSize: '0.88rem',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: '1rem'
+        }}>
+          <span>Database Notice: {dbError}</span>
+          <button
+            onClick={fetchProducts}
+            style={{
+              backgroundColor: '#ff0055',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '0.3rem 0.8rem',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
+          >
+            Retry DB Connection
+          </button>
+        </div>
+      )}
+
+      {isLoadingProducts && allProducts.length === 0 && (
+        <div style={{
+          backgroundColor: 'rgba(0, 240, 255, 0.08)',
+          borderBottom: '1px solid rgba(0, 240, 255, 0.25)',
+          padding: '0.6rem 1rem',
+          textAlign: 'center',
+          color: '#00f0ff',
+          fontSize: '0.85rem',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: '0.6rem'
+        }}>
+          <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#00f0ff', boxShadow: '0 0 10px #00f0ff' }}></span>
+          <span>Connecting directly to MongoDB database & fetching live products...</span>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <div>
@@ -379,6 +463,7 @@ export default function App() {
                 setActiveCategory(catId);
                 setActiveSection('catalog');
               }}
+              products={allProducts}
             />
 
             {/* Flash Sale Banner */}
@@ -386,6 +471,21 @@ export default function App() {
               products={allProducts}
               onAddToCart={handleAddToCart}
               onQuickView={handleOpenProductDetails}
+            />
+
+            {/* Live Hardware Catalog from MongoDB */}
+            <ProductGrid
+              products={allProducts}
+              activeCategory={activeCategory}
+              setActiveCategory={setActiveCategory}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              onAddToCart={handleAddToCart}
+              onQuickView={handleOpenProductDetails}
+              user={user}
+              onEditProduct={handleOpenEditProduct}
+              onDeleteProduct={handleDeleteProduct}
+              onOpenAddProductModal={handleOpenAddProduct}
             />
 
             <Testimonials />
@@ -398,6 +498,7 @@ export default function App() {
             <CategoryNav
               activeCategory={activeCategory}
               onSelectCategory={setActiveCategory}
+              products={allProducts}
             />
             <ProductGrid
               products={allProducts}

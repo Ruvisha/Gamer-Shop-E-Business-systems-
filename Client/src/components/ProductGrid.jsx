@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import ProductCard from './ProductCard';
-import { SlidersHorizontal, ArrowUpDown, Flame, SearchX, RotateCcw, Filter, Check, Tag, Star, DollarSign, Cpu, Plus, ShieldAlert } from 'lucide-react';
-import { categories } from './products';
+import { SlidersHorizontal, ArrowUpDown, Flame, SearchX, RotateCcw, Filter, Check, Tag, Star, DollarSign, Cpu, Plus, ShieldAlert, Search } from 'lucide-react';
 
 export default function ProductGrid({ 
   products, 
@@ -25,11 +24,49 @@ export default function ProductGrid({
 
   // Unique list of brands dynamically extracted from products catalog
   const availableBrands = useMemo(() => {
-    const brandsSet = new Set(products.map(p => p.brand));
+    const brandsSet = new Set((products || []).map(p => p.brand).filter(Boolean));
     return Array.from(brandsSet).sort();
   }, [products]);
 
-  // Multi-Criteria Filtering Logic
+  // Categories list with dynamic live counts from MongoDB products
+  const categoryDefs = useMemo(() => [
+    { id: 'all', name: 'All Products' },
+    { id: 'gpu', name: 'Graphics Cards' },
+    { id: 'cpu', name: 'Processors' },
+    { id: 'ram', name: 'RAM & Memory' },
+    { id: 'mb', name: 'Motherboards' },
+    { id: 'storage', name: 'SSDs & Storage' },
+    { id: 'cooling', name: 'Liquid Cooling' },
+    { id: 'psu', name: 'Power Supplies' },
+    { id: 'case', name: 'PC Cases' }
+  ], []);
+
+  const categories = useMemo(() => {
+    const counts = {};
+    (products || []).forEach(p => {
+      if (p.category) {
+        counts[p.category] = (counts[p.category] || 0) + 1;
+      }
+    });
+
+    const knownIds = new Set(categoryDefs.map(c => c.id));
+    const extraCategories = Object.keys(counts)
+      .filter(id => !knownIds.has(id))
+      .map(id => ({
+        id,
+        name: id.toUpperCase(),
+        count: counts[id]
+      }));
+
+    const definedWithCounts = categoryDefs.map(def => ({
+      ...def,
+      count: def.id === 'all' ? (products || []).length : (counts[def.id] || 0)
+    }));
+
+    return [...definedWithCounts, ...extraCategories];
+  }, [products, categoryDefs]);
+
+  // Multi-Criteria Filtering Logic with progressive letter matching
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
       // 1. Category Radio Filter
@@ -55,17 +92,36 @@ export default function ProductGrid({
       // 5. Rating Filter
       if (minRating !== 'all' && product.rating < parseFloat(minRating)) return false;
 
-      // 6. Live Search Match
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        const matchesName = product.name.toLowerCase().includes(query);
-        const matchesBrand = product.brand.toLowerCase().includes(query);
-        const matchesCategory = product.category.toLowerCase().includes(query);
-        if (!matchesName && !matchesBrand && !matchesCategory) return false;
+      // 6. Live Progressive Search Match (from first letter entered to full name)
+      if (searchQuery && searchQuery.trim()) {
+        const query = searchQuery.trim().toLowerCase();
+        const matchesName = (product.name || '').toLowerCase().includes(query);
+        const matchesBrand = (product.brand || '').toLowerCase().includes(query);
+        const matchesCategory = (product.category || '').toLowerCase().includes(query);
+        const matchesTag = (product.tag || '').toLowerCase().includes(query);
+        const matchesDescription = (product.description || '').toLowerCase().includes(query);
+        const matchesSpecs = product.specs ? JSON.stringify(product.specs).toLowerCase().includes(query) : false;
+        
+        if (!matchesName && !matchesBrand && !matchesCategory && !matchesTag && !matchesDescription && !matchesSpecs) {
+          return false;
+        }
       }
 
       return true;
     }).sort((a, b) => {
+      // Prioritize items starting with the entered letter/term
+      if (searchQuery && searchQuery.trim()) {
+        const q = searchQuery.trim().toLowerCase();
+        const aName = (a.name || '').toLowerCase();
+        const bName = (b.name || '').toLowerCase();
+        const aBrand = (a.brand || '').toLowerCase();
+        const bBrand = (b.brand || '').toLowerCase();
+        const aStarts = aName.startsWith(q) || aBrand.startsWith(q);
+        const bStarts = bName.startsWith(q) || bBrand.startsWith(q);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+      }
+
       if (sortBy === 'price-asc') return a.price - b.price;
       if (sortBy === 'price-desc') return b.price - a.price;
       if (sortBy === 'rating') return b.rating - a.rating;
@@ -84,7 +140,7 @@ export default function ProductGrid({
     setSortBy('popular');
   };
 
-  const hasActiveFilters = activeCategory !== 'all' || selectedBrand !== 'all' || maxPrice < 2500 || availability !== 'all' || minRating !== 'all' || searchQuery !== '';
+  const hasActiveFilters = activeCategory !== 'all' || selectedBrand !== 'all' || maxPrice < 750000 || availability !== 'all' || minRating !== 'all' || searchQuery !== '';
 
   return (
     <section id="products-section" style={{ padding: '3.5rem 0 4rem' }}>
@@ -522,6 +578,54 @@ export default function ProductGrid({
 
           {/* RIGHT COLUMN: Sort Toolbar & Product Grid */}
           <main>
+            {/* Live Search Indicator Bar */}
+            {searchQuery && searchQuery.trim() && (
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '0.8rem',
+                backgroundColor: 'rgba(0, 240, 255, 0.08)',
+                border: '1px solid rgba(0, 240, 255, 0.35)',
+                borderRadius: '12px',
+                padding: '0.75rem 1.2rem',
+                marginBottom: '1rem',
+                color: '#00f0ff',
+                boxShadow: '0 0 20px rgba(0, 240, 255, 0.15)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.88rem' }}>
+                  <Search size={16} color="#00f0ff" />
+                  <span>
+                    Showing products matching letter/query: <strong style={{ color: '#fff', backgroundColor: 'rgba(0, 240, 255, 0.2)', padding: '2px 8px', borderRadius: '4px' }}>"{searchQuery}"</strong>
+                  </span>
+                  <span style={{ fontSize: '0.78rem', color: '#8e9bb0' }}>
+                    ({filteredProducts.length} live {filteredProducts.length === 1 ? 'part' : 'parts'})
+                  </span>
+                </div>
+                <button
+                  onClick={() => setSearchQuery('')}
+                  style={{
+                    backgroundColor: 'rgba(255, 0, 85, 0.15)',
+                    border: '1px solid #ff0055',
+                    color: '#ff0055',
+                    borderRadius: '6px',
+                    padding: '0.35rem 0.75rem',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 0, 85, 0.3)'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 0, 85, 0.15)'}
+                >
+                  Clear Search ✕
+                </button>
+              </div>
+            )}
+
             {/* Sort Toolbar */}
             <div style={{
               display: 'flex',

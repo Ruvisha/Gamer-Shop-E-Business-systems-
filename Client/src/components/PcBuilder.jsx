@@ -3,32 +3,38 @@ import { Wrench, Zap, Check, Trash2, ShoppingBag, ShieldAlert, Sparkles } from '
 
 const slotTypes = [
   { id: 'cpu', label: '1. Processor (CPU)' },
-  { id: 'gpu', label: '2. Graphics Card (GPU)' },
+  { id: 'cooling', label: '2. Liquid Cooling' },
   { id: 'mb', label: '3. Motherboard' },
   { id: 'ram', label: '4. Memory (RAM)' },
-  { id: 'storage', label: '5. Storage (SSD)' },
-  { id: 'psu', label: '6. Power Supply (PSU)' }
+  { id: 'gpu', label: '5. Graphics Card (GPU)' },
+  { id: 'storage', label: '6. Storage (SSD)' },
+  { id: 'psu', label: '7. Power Supply (PSU)' },
+  { id: 'case', label: '8. PC Case' }
 ];
 
 export default function PcBuilder({ products = [], onAddBuildToCart }) {
   const [selectedBuild, setSelectedBuild] = useState({
     cpu: null,
-    gpu: null,
+    cooling: null,
     mb: null,
     ram: null,
+    gpu: null,
     storage: null,
     psu: null,
+    case: null
   });
 
   useEffect(() => {
     if (products.length > 0) {
       setSelectedBuild(prev => ({
         cpu: prev.cpu || products.find(p => p.id === 'cpu-3') || products.find(p => p.category === 'cpu') || null,
-        gpu: prev.gpu || products.find(p => p.id === 'gpu-2') || products.find(p => p.category === 'gpu') || null,
+        cooling: prev.cooling || products.find(p => p.category === 'cooling') || null,
         mb: prev.mb || products.find(p => p.id === 'mb-2') || products.find(p => p.category === 'mb') || null,
         ram: prev.ram || products.find(p => p.id === 'ram-2') || products.find(p => p.category === 'ram') || null,
+        gpu: prev.gpu || products.find(p => p.id === 'gpu-2') || products.find(p => p.category === 'gpu') || null,
         storage: prev.storage || products.find(p => p.id === 'storage-1') || products.find(p => p.category === 'storage') || null,
         psu: prev.psu || products.find(p => p.id === 'psu-1') || products.find(p => p.category === 'psu') || null,
+        case: prev.case || products.find(p => p.category === 'case') || null
       }));
     }
   }, [products]);
@@ -44,11 +50,13 @@ export default function PcBuilder({ products = [], onAddBuildToCart }) {
   const handleClearBuild = () => {
     setSelectedBuild({
       cpu: null,
-      gpu: null,
+      cooling: null,
       mb: null,
       ram: null,
+      gpu: null,
       storage: null,
-      psu: null
+      psu: null,
+      case: null
     });
   };
 
@@ -57,20 +65,24 @@ export default function PcBuilder({ products = [], onAddBuildToCart }) {
     if (presetType === 'flagship') {
       setSelectedBuild({
         cpu: products.find(p => p.id === 'cpu-1') || products.find(p => p.category === 'cpu'),
-        gpu: products.find(p => p.id === 'gpu-1') || products.find(p => p.category === 'gpu'),
+        cooling: products.find(p => p.category === 'cooling'),
         mb: products.find(p => p.id === 'mb-1') || products.find(p => p.category === 'mb'),
         ram: products.find(p => p.id === 'ram-1') || products.find(p => p.category === 'ram'),
+        gpu: products.find(p => p.id === 'gpu-1') || products.find(p => p.category === 'gpu'),
         storage: products.find(p => p.id === 'storage-2') || products.find(p => p.category === 'storage'),
         psu: products.find(p => p.id === 'psu-1') || products.find(p => p.category === 'psu'),
+        case: products.find(p => p.category === 'case'),
       });
     } else if (presetType === 'streamer') {
       setSelectedBuild({
         cpu: products.find(p => p.id === 'cpu-3') || products.find(p => p.category === 'cpu'),
-        gpu: products.find(p => p.id === 'gpu-2') || products.find(p => p.category === 'gpu'),
+        cooling: products.find(p => p.category === 'cooling'),
         mb: products.find(p => p.id === 'mb-2') || products.find(p => p.category === 'mb'),
         ram: products.find(p => p.id === 'ram-2') || products.find(p => p.category === 'ram'),
+        gpu: products.find(p => p.id === 'gpu-2') || products.find(p => p.category === 'gpu'),
         storage: products.find(p => p.id === 'storage-1') || products.find(p => p.category === 'storage'),
         psu: products.find(p => p.id === 'psu-1') || products.find(p => p.category === 'psu'),
+        case: products.find(p => p.category === 'case'),
       });
     }
   };

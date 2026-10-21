@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Edit2, ShieldAlert, Sparkles, Check, Package, DollarSign, Tag, Cpu } from 'lucide-react';
-import { categories } from './products';
 
 export default function AdminProductModal({ isOpen, onClose, onSaveProduct, initialProduct = null }) {
   const [formData, setFormData] = useState({

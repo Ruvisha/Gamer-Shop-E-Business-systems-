@@ -3,8 +3,8 @@ import { Star, ShoppingCart, Eye, Zap, ShieldCheck, Edit3, Trash2, ShieldAlert }
 
 export default function ProductCard({ product, onAddToCart, onQuickView, user, onEditProduct, onDeleteProduct }) {
   const isAdmin = user?.role === 'admin';
-  const discountPercent = product.originalPrice 
-    ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100) 
+  const discountPercent = product.originalPrice
+    ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
     : 0;
 
   return (
@@ -53,8 +53,8 @@ export default function ProductCard({ product, onAddToCart, onQuickView, user, o
             </button>
 
             <button
-              onClick={(e) => { 
-                e.stopPropagation(); 
+              onClick={(e) => {
+                e.stopPropagation();
                 if (window.confirm(`Are you sure you want to delete "${product.name}"?`)) {
                   onDeleteProduct(product.id);
                 }
@@ -120,7 +120,7 @@ export default function ProductCard({ product, onAddToCart, onQuickView, user, o
       </div>
 
       {/* Image Wrapper */}
-      <div 
+      <div
         onClick={() => onQuickView(product)}
         style={{
           position: 'relative',
@@ -166,7 +166,7 @@ export default function ProductCard({ product, onAddToCart, onQuickView, user, o
           </div>
         </div>
 
-        <h3 
+        <h3
           onClick={() => onQuickView(product)}
           style={{
             fontSize: '0.95rem',

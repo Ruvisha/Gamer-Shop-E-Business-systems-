@@ -1,5 +1,30 @@
-import React, { useState } from 'react';
-import { ShoppingBag, Search, Wrench, Heart, Zap, Menu, X, ShieldCheck, User, LogOut, Plus, Crown, PackageCheck } from 'lucide-react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { ShoppingBag, Search, Wrench, Heart, Zap, Menu, X, ShieldCheck, User, LogOut, Plus, Crown, PackageCheck, ChevronRight, Sparkles, ArrowRight } from 'lucide-react';
+
+function highlightSearchMatch(text = '', query = '') {
+  if (!query || !text) return text;
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = String(text).split(new RegExp(`(${escapedQuery})`, 'gi'));
+  return parts.map((part, index) =>
+    part.toLowerCase() === query.toLowerCase() ? (
+      <span
+        key={index}
+        style={{
+          color: '#00f0ff',
+          backgroundColor: 'rgba(0, 240, 255, 0.25)',
+          padding: '0 2px',
+          borderRadius: '3px',
+          fontWeight: 800,
+          textShadow: '0 0 8px rgba(0, 240, 255, 0.6)'
+        }}
+      >
+        {part}
+      </span>
+    ) : (
+      part
+    )
+  );
+}
 
 export default function Navbar({
   cartCount,
@@ -17,10 +42,74 @@ export default function Navbar({
   onOpenUserOrders,
   onOpenAdminOrders,
   activeSection,
-  setActiveSection
+  setActiveSection,
+  products = [],
+  onQuickView,
+  onAddToCart
 }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const searchContainerRef = useRef(null);
   const isAdmin = user?.role === 'admin';
+
+  // Handle clicking outside of search bar or pressing Escape to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target)) {
+        setIsSearchFocused(false);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setIsSearchFocused(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  // Compute live letter-by-letter matching products from MongoDB database catalog
+  const matchingProducts = useMemo(() => {
+    const q = (searchQuery || '').trim().toLowerCase();
+    if (!q) return [];
+
+    return (products || []).filter((product) => {
+      const name = (product.name || '').toLowerCase();
+      const brand = (product.brand || '').toLowerCase();
+      const category = (product.category || '').toLowerCase();
+      const tag = (product.tag || '').toLowerCase();
+      const desc = (product.description || '').toLowerCase();
+      return name.includes(q) || brand.includes(q) || category.includes(q) || tag.includes(q) || desc.includes(q);
+    }).sort((a, b) => {
+      const qLower = q;
+      const aName = (a.name || '').toLowerCase();
+      const bName = (b.name || '').toLowerCase();
+      const aBrand = (a.brand || '').toLowerCase();
+      const bBrand = (b.brand || '').toLowerCase();
+
+      // Products starting with the entered letter/term appear first
+      const aStarts = aName.startsWith(qLower) || aBrand.startsWith(qLower);
+      const bStarts = bName.startsWith(qLower) || bBrand.startsWith(qLower);
+      if (aStarts && !bStarts) return -1;
+      if (!aStarts && bStarts) return 1;
+
+      return (b.reviewsCount || 0) - (a.reviewsCount || 0);
+    });
+  }, [products, searchQuery]);
+
+  const handleSearchInput = (e) => {
+    const val = e.target.value;
+    setSearchQuery(val);
+    setIsSearchFocused(true);
+    // As customer types first letter, ensure website displays catalog view
+    if (val.trim().length > 0 && activeSection !== 'catalog' && activeSection !== 'product-details') {
+      setActiveSection('catalog');
+    }
+  };
 
   return (
     <header style={{
@@ -307,50 +396,270 @@ export default function Navbar({
           </div>
         </div>
 
-        {/* Lower Row: Search Bar (Positioned directly underneath Gamer Shop Title) */}
-        <div style={{ position: 'relative', width: '100%', maxWidth: '480px' }}>
+        {/* Lower Row: Search Bar with Live Instant Autocomplete Dropdown */}
+        <div ref={searchContainerRef} style={{ position: 'relative', width: '100%', maxWidth: '520px' }}>
           <input
             type="text"
-            placeholder="Search GPUs, CPUs, Gaming Rigs..."
+            placeholder="Search GPUs, CPUs, Motherboards, RAM, Cases..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={handleSearchInput}
+            onFocus={() => {
+              if (searchQuery.trim().length > 0) setIsSearchFocused(true);
+            }}
             style={{
               width: '100%',
               backgroundColor: '#121624',
-              border: '1px solid rgba(0, 240, 255, 0.25)',
-              borderRadius: '24px',
-              padding: '0.65rem 1rem 0.65rem 2.8rem',
+              border: isSearchFocused && searchQuery.trim().length > 0 ? '1px solid #00f0ff' : '1px solid rgba(0, 240, 255, 0.25)',
+              borderRadius: isSearchFocused && searchQuery.trim().length > 0 ? '16px 16px 0 0' : '24px',
+              padding: '0.7rem 2.8rem 0.7rem 2.9rem',
               color: '#fff',
-              fontSize: '0.85rem',
+              fontSize: '0.88rem',
               outline: 'none',
               transition: 'all 0.2s ease',
-              boxShadow: '0 4px 15px rgba(0, 0, 0, 0.3)'
+              boxShadow: isSearchFocused && searchQuery.trim().length > 0
+                ? '0 0 20px rgba(0, 240, 255, 0.35)'
+                : '0 4px 15px rgba(0, 0, 0, 0.3)'
             }}
-            onFocus={(e) => e.target.style.borderColor = '#00f0ff'}
-            onBlur={(e) => e.target.style.borderColor = 'rgba(0, 240, 255, 0.25)'}
           />
           <Search size={18} color="#00f0ff" style={{
             position: 'absolute',
-            left: '1rem',
+            left: '1.1rem',
             top: '50%',
             transform: 'translateY(-50%)'
           }} />
+
           {searchQuery && (
             <button
-              onClick={() => setSearchQuery('')}
+              onClick={() => {
+                setSearchQuery('');
+                setIsSearchFocused(false);
+              }}
+              title="Clear search"
               style={{
                 position: 'absolute',
                 right: '1rem',
                 top: '50%',
                 transform: 'translateY(-50%)',
-                background: 'none',
+                background: 'rgba(255, 255, 255, 0.08)',
                 border: 'none',
+                borderRadius: '50%',
+                width: '24px',
+                height: '24px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 color: '#8e9bb0',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 0, 85, 0.2)';
+                e.currentTarget.style.color = '#ff0055';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)';
+                e.currentTarget.style.color = '#8e9bb0';
               }}
             >
-              <X size={16} />
+              <X size={14} />
             </button>
+          )}
+
+          {/* Live Instant Search Dropdown (Matches as each letter is typed) */}
+          {isSearchFocused && searchQuery.trim().length > 0 && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              backgroundColor: '#0c0f18',
+              border: '1px solid #00f0ff',
+              borderTop: 'none',
+              borderRadius: '0 0 16px 16px',
+              boxShadow: '0 16px 40px rgba(0, 0, 0, 0.9), 0 0 25px rgba(0, 240, 255, 0.25)',
+              zIndex: 1200,
+              overflow: 'hidden',
+              backdropFilter: 'blur(20px)'
+            }}>
+              {/* Dropdown Header */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.6rem 1rem',
+                backgroundColor: 'rgba(0, 240, 255, 0.08)',
+                borderBottom: '1px solid rgba(0, 240, 255, 0.15)',
+                fontSize: '0.72rem',
+                fontFamily: "'Orbitron', sans-serif",
+                letterSpacing: '1px'
+              }}>
+                <span style={{ color: '#00f0ff', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <Sparkles size={13} color="#00f0ff" />
+                  LIVE SEARCH RESULTS
+                </span>
+                <span style={{
+                  backgroundColor: matchingProducts.length > 0 ? '#00f0ff' : 'rgba(255, 0, 85, 0.2)',
+                  color: matchingProducts.length > 0 ? '#000' : '#ff0055',
+                  padding: '2px 8px',
+                  borderRadius: '10px',
+                  fontWeight: 800
+                }}>
+                  {matchingProducts.length} {matchingProducts.length === 1 ? 'MATCH' : 'MATCHES'}
+                </span>
+              </div>
+
+              {/* Matching Products List */}
+              <div style={{ maxHeight: '340px', overflowY: 'auto' }}>
+                {matchingProducts.length > 0 ? (
+                  matchingProducts.slice(0, 6).map((product) => (
+                    <div
+                      key={product.id}
+                      onClick={() => {
+                        setIsSearchFocused(false);
+                        if (onQuickView) onQuickView(product);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '0.65rem 1rem',
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        gap: '0.8rem'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(0, 240, 255, 0.12)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                    >
+                      {/* Product Thumbnail */}
+                      <div style={{
+                        width: '44px',
+                        height: '44px',
+                        borderRadius: '8px',
+                        backgroundColor: '#161a29',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        overflow: 'hidden',
+                        flexShrink: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <img
+                          src={product.image}
+                          alt={product.name}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          onError={(e) => { e.currentTarget.src = product.fallbackImage || '/images/gpu-1.jpg'; }}
+                        />
+                      </div>
+
+                      {/* Title & Metadata */}
+                      <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '3px' }}>
+                          <span style={{
+                            fontSize: '0.62rem',
+                            fontWeight: 800,
+                            textTransform: 'uppercase',
+                            color: '#00f0ff',
+                            backgroundColor: 'rgba(0, 240, 255, 0.15)',
+                            padding: '1px 6px',
+                            borderRadius: '4px'
+                          }}>
+                            {product.category}
+                          </span>
+                          <span style={{ fontSize: '0.7rem', color: '#8e9bb0', fontWeight: 600 }}>
+                            {product.brand}
+                          </span>
+                          {product.isFlashSale && (
+                            <span style={{
+                              fontSize: '0.6rem',
+                              fontWeight: 800,
+                              color: '#ff0055',
+                              backgroundColor: 'rgba(255, 0, 85, 0.15)',
+                              padding: '1px 5px',
+                              borderRadius: '4px'
+                            }}>
+                              SALE
+                            </span>
+                          )}
+                        </div>
+                        <div style={{
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          color: '#fff',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}>
+                          {highlightSearchMatch(product.name, searchQuery)}
+                        </div>
+                      </div>
+
+                      {/* Price & Status */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexShrink: 0 }}>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 900, color: '#00ff66', fontFamily: 'var(--font-stats)' }}>
+                            Rs. {Number(product.price).toLocaleString()}
+                          </div>
+                          <div style={{ fontSize: '0.65rem', color: product.stock > 0 ? '#00f0ff' : '#ff0055' }}>
+                            {product.stock > 0 ? `In Stock (${product.stock})` : 'Out of Stock'}
+                          </div>
+                        </div>
+                        <ChevronRight size={16} color="#8e9bb0" />
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ padding: '2.5rem 1.5rem', textAlign: 'center', color: '#8e9bb0' }}>
+                    <div style={{ fontSize: '0.92rem', color: '#fff', fontWeight: 700, marginBottom: '0.4rem' }}>
+                      No components found matching "{searchQuery}"
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#687790', maxWidth: '320px', margin: '0 auto' }}>
+                      Try typing a component category (GPU, CPU, RAM) or brand (ASUS, MSI, AMD, Intel, Corsair).
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Dropdown Footer Action */}
+              {matchingProducts.length > 0 && (
+                <div
+                  onClick={() => {
+                    setIsSearchFocused(false);
+                    setActiveSection('catalog');
+                  }}
+                  style={{
+                    padding: '0.7rem 1rem',
+                    backgroundColor: '#121624',
+                    borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    color: '#00f0ff',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(0, 240, 255, 0.15)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '#121624';
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    View all {matchingProducts.length} matching products in Catalog <ArrowRight size={14} />
+                  </span>
+                  <span style={{ fontSize: '0.68rem', color: '#8e9bb0', textTransform: 'uppercase' }}>
+                    Live DB Search
+                  </span>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

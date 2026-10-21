@@ -1,6 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { LayoutGrid, Cpu, Zap, MemoryStick, CircuitBoard, HardDrive, Fan, BatteryCharging, Box } from 'lucide-react';
-import { categories as defaultCategories } from '../data/products';
+const defaultCategories = [
+  { id: 'all', name: 'All Products', icon: 'LayoutGrid', count: 0 },
+  { id: 'gpu', name: 'Graphics Cards', icon: 'Cpu', count: 0 },
+  { id: 'cpu', name: 'Processors', icon: 'Zap', count: 0 },
+  { id: 'ram', name: 'RAM & Memory', icon: 'MemoryStick', count: 0 },
+  { id: 'mb', name: 'Motherboards', icon: 'CircuitBoard', count: 0 },
+  { id: 'storage', name: 'SSDs & Storage', icon: 'HardDrive', count: 0 },
+  { id: 'cooling', name: 'Liquid Cooling', icon: 'Fan', count: 0 },
+  { id: 'psu', name: 'Power Supplies', icon: 'BatteryCharging', count: 0 },
+  { id: 'case', name: 'PC Cases', icon: 'Box', count: 0 }
+];
 
 const iconMap = {
   LayoutGrid,
@@ -14,13 +24,19 @@ const iconMap = {
   Box
 };
 
-export default function CategoryNav({ activeCategory, onSelectCategory, categories: categoriesProp = null }) {
+export default function CategoryNav({ activeCategory, onSelectCategory, categories: categoriesProp = null, products = [] }) {
   const [categoriesList, setCategoriesList] = useState(categoriesProp || defaultCategories);
 
   useEffect(() => {
     if (categoriesProp && categoriesProp.length > 0) {
       setCategoriesList(categoriesProp);
       return;
+    }
+    if (products && products.length > 0) {
+      setCategoriesList(defaultCategories.map(cat => ({
+        ...cat,
+        count: cat.id === 'all' ? products.length : products.filter(p => p.category === cat.id).length
+      })));
     }
     const fetchCategories = async () => {
       try {
@@ -39,7 +55,7 @@ export default function CategoryNav({ activeCategory, onSelectCategory, categori
       }
     };
     fetchCategories();
-  }, [categoriesProp]);
+  }, [categoriesProp, products]);
 
   return (
     <div style={{

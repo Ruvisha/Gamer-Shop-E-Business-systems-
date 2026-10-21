@@ -16,6 +16,18 @@ const imageSchema = new mongoose.Schema(
       type: String,
       default: "image/jpeg"
     },
+    data: {
+      type: Buffer,
+      default: null
+    },
+    fileSize: {
+      type: Number,
+      default: 0
+    },
+    originalPath: {
+      type: String,
+      default: ""
+    },
     originalUrl: {
       type: String,
       default: ""

@@ -3,18 +3,38 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import crypto from "crypto";
 import path from "path";
-import { connectDB } from "./db.js";
+import fs from "fs";
+import { fileURLToPath } from "url";
+import { connectDB, setOnConnectCallback } from "./db.js";
 import { Product } from "./models/Product.js";
 import { User } from "./models/User.js";
 import { ImageModel } from "./models/Image.js";
 import { Order } from "./models/Order.js";
-import { DEFAULT_FALLBACK_IMAGE, resolveImageUrl } from "./imageHelper.js";
+import { DEFAULT_FALLBACK_IMAGE, resolveImageUrl, getContentTypeFromExt } from "./imageHelper.js";
+import { syncDataToMongo } from "./syncDataToMongo.js";
 
 dotenv.config();
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
-app.use(express.json({ limit: "15mb" }));
-app.use(express.urlencoded({ limit: "15mb", extended: true }));
+app.use(express.json({ limit: "25mb" }));
+app.use(express.urlencoded({ limit: "25mb", extended: true }));
+
+// Set callback to sync Data files into MongoDB on initial connect if needed
+setOnConnectCallback(async () => {
+  try {
+    const prodCount = await Product.countDocuments();
+    console.log(`[MongoDB] Database connected. Current products in DB: ${prodCount}`);
+    if (prodCount === 0) {
+      console.log("[MongoDB] Database empty. Syncing Data directory files into MongoDB...");
+      await syncDataToMongo();
+    }
+  } catch (err) {
+    console.warn("[MongoDB] onConnect auto-sync warning:", err.message);
+  }
+});
 
 // Connect MongoDB directly
 connectDB();
@@ -46,15 +66,56 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// GET /api/database/status: Database connection & collection statistics
+app.get("/api/database/status", async (req, res) => {
+  const isConnected = mongoose.connection.readyState === 1;
+  let productsCount = 0;
+  let imagesCount = 0;
+  if (isConnected) {
+    try {
+      productsCount = await Product.countDocuments();
+      imagesCount = await ImageModel.countDocuments();
+    } catch (e) {}
+  }
+  res.json({
+    connected: isConnected,
+    dbName: mongoose.connection.name || "gamer_shop",
+    productsCount,
+    imagesCount,
+    status: isConnected ? "Active & Connected to MongoDB" : "Connecting..."
+  });
+});
+
+// POST /api/database/sync: Explicitly trigger data synchronization from Data folder into MongoDB
+app.post("/api/database/sync", async (req, res) => {
+  try {
+    const result = await syncDataToMongo();
+    res.json({
+      success: true,
+      message: "Data files successfully synchronized to MongoDB!",
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Helper to format product data and normalize image URLs for client rendering
 export function formatProductForClient(product) {
   const p = product.toObject ? product.toObject() : { ...product };
-  p.image = resolveImageUrl(p.image);
-  p.fallbackImage = resolveImageUrl(p.fallbackImage || p.image);
+  if (!p.image) {
+    p.image = `/api/images/${p.id}`;
+  }
+  if (!p.fallbackImage) {
+    p.fallbackImage = `/images/${p.id}.jpg`;
+  }
+  p.image = resolveImageUrl(p.image, `/api/images/${p.id}`);
+  p.fallbackImage = resolveImageUrl(p.fallbackImage, `/images/${p.id}.jpg`);
   return p;
 }
 
-// MONGODB IMAGE REDIRECT ENDPOINT: GET /api/images/:id
+// MONGODB IMAGE STREAMING ENDPOINT: GET /api/images/:id
+// Retrieves binary image data directly stored in MongoDB database
 app.get("/api/images/:id", async (req, res) => {
   let { id } = req.params;
   try {
@@ -65,6 +126,30 @@ app.get("/api/images/:id", async (req, res) => {
 
   try {
     if (mongoose.connection.readyState === 1) {
+      // 1. Look up image binary buffer stored directly in MongoDB images collection
+      const imgDoc = await ImageModel.findOne({
+        $or: [
+          { imageId: id },
+          { imageId: cleanId },
+          { filename: id },
+          { filename: `${cleanId}.jpg` }
+        ]
+      });
+
+      if (imgDoc && imgDoc.data) {
+        const buf = Buffer.isBuffer(imgDoc.data) ? imgDoc.data : Buffer.from(imgDoc.data.buffer || imgDoc.data);
+        res.setHeader("Content-Type", imgDoc.contentType || "image/jpeg");
+        res.setHeader("Content-Length", buf.length);
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        return res.send(buf);
+      }
+
+      // If stored as an external URL
+      if (imgDoc && imgDoc.originalUrl && imgDoc.originalUrl.startsWith("http")) {
+        return res.redirect(imgDoc.originalUrl);
+      }
+
+      // 2. Check if product in MongoDB has an external image URL
       const isValidOid = mongoose.Types.ObjectId.isValid(id);
       const dbProduct = await Product.findOne({
         $or: [
@@ -74,23 +159,30 @@ app.get("/api/images/:id", async (req, res) => {
         ]
       });
 
-      if (dbProduct && dbProduct.image && dbProduct.image.startsWith("http")) {
+      if (dbProduct && dbProduct.image && dbProduct.image.startsWith("http") && !dbProduct.image.includes("/api/images/")) {
         return res.redirect(dbProduct.image);
-      }
-
-      const imgDoc = await ImageModel.findOne({
-        $or: [
-          { imageId: id },
-          { imageId: cleanId }
-        ]
-      });
-
-      if (imgDoc && imgDoc.originalUrl && imgDoc.originalUrl.startsWith("http")) {
-        return res.redirect(imgDoc.originalUrl);
       }
     }
   } catch (err) {
     console.error("[Image Server] Error retrieving image from MongoDB:", err.message);
+  }
+
+  // 3. Fallback: Check local files in Client/public/images/ or Data/
+  const candidateFiles = [
+    path.resolve(__dirname, "..", "Client", "public", "images", `${id}.jpg`),
+    path.resolve(__dirname, "..", "Client", "public", "images", id),
+    path.resolve(__dirname, "..", "Client", "public", "images", `${cleanId}.jpg`),
+    path.resolve(__dirname, "..", "..", "Data", id),
+    path.resolve(__dirname, "..", "..", "Data", `${id}.jpg`),
+    path.resolve(__dirname, "..", "..", "Data", `${cleanId}.jpg`)
+  ];
+
+  for (const cand of candidateFiles) {
+    if (fs.existsSync(cand) && fs.statSync(cand).isFile()) {
+      res.setHeader("Content-Type", getContentTypeFromExt(cand));
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      return res.sendFile(cand);
+    }
   }
 
   return res.redirect(DEFAULT_FALLBACK_IMAGE);
@@ -98,21 +190,36 @@ app.get("/api/images/:id", async (req, res) => {
 
 // IMAGE URL REGISTRATION ENDPOINT: POST /api/images/upload
 app.post("/api/images/upload", async (req, res) => {
-  const { imageId, imageUrl, originalUrl } = req.body;
+  const { imageId, imageUrl, originalUrl, base64Data, contentType = "image/jpeg" } = req.body;
   const id = imageId || `img-${Date.now()}`;
-  const targetUrl = imageUrl || originalUrl || DEFAULT_FALLBACK_IMAGE;
 
   try {
     if (mongoose.connection.readyState === 1) {
+      let buffer = null;
+      if (base64Data) {
+        const cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, "");
+        buffer = Buffer.from(cleanBase64, "base64");
+      }
+
+      const updateData = {
+        imageId: id,
+        originalUrl: imageUrl || originalUrl || `/api/images/${id}`
+      };
+      if (buffer) {
+        updateData.data = buffer;
+        updateData.fileSize = buffer.length;
+        updateData.contentType = contentType;
+      }
+
       const savedImg = await ImageModel.findOneAndUpdate(
         { imageId: id },
-        { imageId: id, originalUrl: targetUrl },
-        { upsert: true, new: true }
+        { $set: updateData },
+        { upsert: true, returnDocument: 'after' }
       );
       return res.status(201).json({
         success: true,
-        message: "Image URL stored in MongoDB",
-        imageUrl: savedImg.originalUrl,
+        message: "Image stored in MongoDB",
+        imageUrl: `/api/images/${savedImg.imageId}`,
         imageId: savedImg.imageId
       });
     }

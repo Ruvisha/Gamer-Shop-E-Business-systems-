@@ -1,9 +1,37 @@
 import React, { useState, useEffect } from 'react';
 import { Star, ShieldCheck, Quote, User } from 'lucide-react';
-import { reviews as defaultReviews } from '../data/products';
+const fallbackReviews = [
+  {
+    id: 1,
+    author: 'Alex "Vortex" Vance',
+    role: 'Esports Streamer & Competitive Gamer',
+    rating: 5,
+    comment: 'Gamer Shop delivered my RTX 4090 and 7950X3D in less than 24 hours. The custom PC builder tool made checking motherboard & wattage compatibility effortless! My rig gets 360+ FPS effortlessly now.',
+    verified: true,
+    product: 'ROG Strix RTX 4090 OC'
+  },
+  {
+    id: 2,
+    author: 'Elena Rostova',
+    role: '3D Animator & PC Enthusiast',
+    rating: 5,
+    comment: 'The pricing on Gamer Shop is unbeatable! Saved over Rs. 90,000 on my full watercooled Lian Li build. Customer support answered my technical questions regarding PCIe 5.0 NVMe bandwidth instantly.',
+    verified: true,
+    product: 'LIAN LI O11 Dynamic EVO RGB'
+  },
+  {
+    id: 3,
+    author: 'Marcus Brody',
+    role: 'Hardware Overclocker',
+    rating: 5,
+    comment: 'Gamer Shop is the only vendor I trust for binned high-frequency DDR5 memory and flagship motherboard stock. Packaging was bomb-proof and double buffered.',
+    verified: true,
+    product: 'G.Skill Trident Z5 7200MHz'
+  }
+];
 
 export default function Testimonials() {
-  const [reviewsList, setReviewsList] = useState(defaultReviews);
+  const [reviewsList, setReviewsList] = useState(fallbackReviews);
 
   useEffect(() => {
     const fetchReviews = async () => {

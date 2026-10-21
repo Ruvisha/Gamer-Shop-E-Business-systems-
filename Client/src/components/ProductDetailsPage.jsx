@@ -74,7 +74,7 @@ export default function ProductDetailsPage({
     setReviewNotice('');
 
     try {
-      const res = await fetch(`http://localhost:3000/api/products/${product.id}/reviews`, {
+      let res = await fetch(`/api/products/${product.id}/reviews`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -84,17 +84,33 @@ export default function ProductDetailsPage({
           title: newReviewTitle.trim() || 'Awesome Gaming Part',
           comment: newReviewComment.trim()
         })
-      });
+      }).catch(() => null);
 
-      const data = await res.json();
-      if (data.success && data.product) {
-        setReviewsList(data.product.reviews || []);
-        setCurrentRating(data.product.rating);
-        setCurrentReviewsCount(data.product.reviewsCount);
-        setNewReviewTitle('');
-        setNewReviewComment('');
-        setReviewNotice('✓ Review saved to MongoDB database successfully!');
-        setTimeout(() => setReviewNotice(''), 4000);
+      if (!res || !res.ok) {
+        res = await fetch(`http://localhost:3000/api/products/${product.id}/reviews`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userName: user?.name || 'Gamer Customer',
+            userEmail: user?.email || '',
+            rating: newRating,
+            title: newReviewTitle.trim() || 'Awesome Gaming Part',
+            comment: newReviewComment.trim()
+          })
+        }).catch(() => null);
+      }
+
+      if (res && res.ok) {
+        const data = await res.json();
+        if (data.success && data.product) {
+          setReviewsList(data.product.reviews || []);
+          setCurrentRating(data.product.rating);
+          setCurrentReviewsCount(data.product.reviewsCount);
+          setNewReviewTitle('');
+          setNewReviewComment('');
+          setReviewNotice('✓ Review saved to MongoDB database successfully!');
+          setTimeout(() => setReviewNotice(''), 4000);
+        }
       }
     } catch (err) {
       console.error('Failed to save review in MongoDB:', err.message);
