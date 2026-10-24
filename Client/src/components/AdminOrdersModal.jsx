@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShieldCheck, CheckCircle2, Clock, Truck, RefreshCw, XCircle, DollarSign, CreditCard, User, MapPin, Phone, Mail, ShoppingBag } from 'lucide-react';
+import { X, ShieldCheck, CheckCircle2, Clock, Truck, RefreshCw, XCircle, DollarSign, CreditCard, User, MapPin, Phone, Mail, ShoppingBag, AlertCircle } from 'lucide-react';
 
 export default function AdminOrdersModal({ isOpen, onClose }) {
   const [orders, setOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [filter, setFilter] = useState('ALL');
   const [updatingId, setUpdatingId] = useState(null);
+  const [feedback, setFeedback] = useState(null);
 
   const fetchAllOrders = async () => {
     setIsLoading(true);
@@ -25,31 +26,83 @@ export default function AdminOrdersModal({ isOpen, onClose }) {
   useEffect(() => {
     if (isOpen) {
       fetchAllOrders();
+      setFeedback(null);
     }
   }, [isOpen]);
 
   const handleUpdateApproval = async (orderId, newStatus) => {
+    if (!orderId) {
+      alert('Error: Order ID is missing.');
+      return;
+    }
+
     setUpdatingId(orderId);
+    setFeedback(null);
+
     try {
-      const res = await fetch(`http://localhost:3000/api/admin/orders/${orderId}/approval`, {
+      const encodedId = encodeURIComponent(orderId);
+      const res = await fetch(`http://localhost:3000/api/admin/orders/${encodedId}/approval`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminApprovalStatus: newStatus })
+        body: JSON.stringify({
+          orderId,
+          adminApprovalStatus: newStatus,
+          paymentStatus: newStatus === 'REJECTED' ? 'CANCELLED' : undefined
+        })
       });
-      const data = await res.json();
-      if (data.success) {
-        setOrders(prev => prev.map(o => o.orderId === orderId ? { ...o, adminApprovalStatus: newStatus } : o));
+
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (parseErr) {
+        throw new Error(`Server returned invalid response (Status: ${res.status})`);
+      }
+
+      if (res.ok && (data.success || data.order)) {
+        const cleanTarget = String(orderId).replace(/^#/, '');
+        setOrders(prev => prev.map(o => {
+          const oClean = String(o.orderId || o._id || '').replace(/^#/, '');
+          if (o.orderId === orderId || o._id === orderId || oClean === cleanTarget) {
+            return {
+              ...o,
+              adminApprovalStatus: newStatus,
+              ...(newStatus === 'REJECTED' ? { paymentStatus: 'CANCELLED' } : {}),
+              ...(data.order || {})
+            };
+          }
+          return o;
+        }));
+
+        const statusLabel = newStatus === 'REJECTED' ? 'REJECTED' : newStatus === 'APPROVED' ? 'APPROVED' : 'MARKED DISPATCHED';
+        setFeedback({
+          type: 'success',
+          message: `Order #${cleanTarget} successfully updated to ${statusLabel}!`
+        });
+        setTimeout(() => setFeedback(null), 4500);
       } else {
-        alert(data.message || 'Failed to update order status');
+        const errMsg = data.error || data.message || 'Failed to update order status';
+        setFeedback({ type: 'error', message: errMsg });
+        alert(errMsg);
       }
     } catch (err) {
-      alert('Error updating status: ' + err.message);
+      console.error('Error updating approval status:', err);
+      const errMsg = 'Error updating status: ' + err.message;
+      setFeedback({ type: 'error', message: errMsg });
+      alert(errMsg);
     } finally {
       setUpdatingId(null);
     }
   };
 
   if (!isOpen) return null;
+
+  const counts = {
+    ALL: orders.length,
+    PENDING_APPROVAL: orders.filter(o => (o.adminApprovalStatus || 'PENDING_APPROVAL') === 'PENDING_APPROVAL').length,
+    APPROVED: orders.filter(o => o.adminApprovalStatus === 'APPROVED').length,
+    DISPATCHED: orders.filter(o => o.adminApprovalStatus === 'DISPATCHED').length,
+    REJECTED: orders.filter(o => o.adminApprovalStatus === 'REJECTED').length,
+  };
 
   const filteredOrders = orders.filter(o => {
     if (filter === 'ALL') return true;
@@ -144,6 +197,36 @@ export default function AdminOrdersModal({ isOpen, onClose }) {
           </div>
         </div>
 
+        {/* Real-time Action Feedback Banner */}
+        {feedback && (
+          <div style={{
+            padding: '0.65rem 1rem',
+            marginBottom: '1rem',
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '8px',
+            fontSize: '0.82rem',
+            fontWeight: 800,
+            fontFamily: 'var(--font-heading)',
+            backgroundColor: feedback.type === 'success' ? 'rgba(0, 230, 153, 0.15)' : 'rgba(255, 0, 85, 0.15)',
+            border: `1px solid ${feedback.type === 'success' ? '#00e699' : '#ff0055'}`,
+            color: feedback.type === 'success' ? '#00e699' : '#ff0055'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {feedback.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+              <span>{feedback.message}</span>
+            </div>
+            <button
+              onClick={() => setFeedback(null)}
+              style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0 }}
+            >
+              <X size={15} />
+            </button>
+          </div>
+        )}
+
         {/* Filters */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '1rem', flexWrap: 'wrap' }}>
           {['ALL', 'PENDING_APPROVAL', 'APPROVED', 'DISPATCHED', 'REJECTED'].map(st => (
@@ -155,13 +238,26 @@ export default function AdminOrdersModal({ isOpen, onClose }) {
                 border: `1px solid ${filter === st ? '#ff0055' : 'rgba(255, 255, 255, 0.08)'}`,
                 color: filter === st ? '#ff0055' : '#8e9bb0',
                 borderRadius: '6px',
-                padding: '4px 12px',
+                padding: '5px 12px',
                 fontSize: '0.75rem',
                 fontWeight: 700,
-                cursor: 'pointer'
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s ease'
               }}
             >
-              {st === 'ALL' ? 'ALL ORDERS' : st.replace('_', ' ')}
+              <span>{st === 'ALL' ? 'ALL ORDERS' : st.replace('_', ' ')}</span>
+              <span style={{
+                backgroundColor: filter === st ? '#ff0055' : 'rgba(255, 255, 255, 0.1)',
+                color: filter === st ? '#fff' : '#8e9bb0',
+                padding: '1px 6px',
+                borderRadius: '10px',
+                fontSize: '0.65rem'
+              }}>
+                {counts[st] || 0}
+              </span>
             </button>
           ))}
         </div>
@@ -201,18 +297,36 @@ export default function AdminOrdersModal({ isOpen, onClose }) {
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '1rem', color: '#00f0ff' }}>
-                            Order #{ord.orderId}
+                            Order {ord.orderId?.startsWith('#') ? ord.orderId : `#${ord.orderId || ord._id}`}
                           </span>
                           <span style={{
                             fontSize: '0.7rem',
                             fontWeight: 800,
                             padding: '2px 8px',
                             borderRadius: '4px',
-                            backgroundColor: ord.paymentStatus === 'PAID' ? 'rgba(0, 230, 153, 0.15)' : 'rgba(255, 170, 0, 0.15)',
-                            color: ord.paymentStatus === 'PAID' ? '#00e699' : '#ffaa00',
-                            border: `1px solid ${ord.paymentStatus === 'PAID' ? '#00e699' : '#ffaa00'}`
+                            backgroundColor: approvalStatus === 'REJECTED' || ord.paymentStatus === 'CANCELLED'
+                              ? 'rgba(255, 0, 85, 0.15)'
+                              : ord.paymentStatus === 'PAID'
+                              ? 'rgba(0, 230, 153, 0.15)'
+                              : 'rgba(255, 170, 0, 0.15)',
+                            color: approvalStatus === 'REJECTED' || ord.paymentStatus === 'CANCELLED'
+                              ? '#ff0055'
+                              : ord.paymentStatus === 'PAID'
+                              ? '#00e699'
+                              : '#ffaa00',
+                            border: `1px solid ${
+                              approvalStatus === 'REJECTED' || ord.paymentStatus === 'CANCELLED'
+                                ? '#ff0055'
+                                : ord.paymentStatus === 'PAID'
+                                ? '#00e699'
+                                : '#ffaa00'
+                            }`
                           }}>
-                            {ord.paymentStatus === 'PAID' ? 'PAYMENT APPROVED (PayHere Sandbox)' : 'PENDING PAYMENT'}
+                            {approvalStatus === 'REJECTED' || ord.paymentStatus === 'CANCELLED'
+                              ? 'ORDER REJECTED / CANCELLED'
+                              : ord.paymentStatus === 'PAID'
+                              ? 'PAYMENT APPROVED (PayHere Sandbox)'
+                              : 'PENDING PAYMENT'}
                           </span>
                         </div>
                         <div style={{ fontSize: '0.75rem', color: '#667799', marginTop: '2px' }}>
@@ -239,7 +353,7 @@ export default function AdminOrdersModal({ isOpen, onClose }) {
                         )}
                         {approvalStatus === 'REJECTED' && (
                           <span style={{ backgroundColor: 'rgba(255, 0, 85, 0.15)', border: '1px solid #ff0055', color: '#ff0055', padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <XCircle size={14} /> REJECTED
+                            <XCircle size={14} /> REJECTED BY ADMIN
                           </span>
                         )}
                       </div>
@@ -324,65 +438,80 @@ export default function AdminOrdersModal({ isOpen, onClose }) {
                     </div>
 
                     {/* Admin Action Buttons */}
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.8rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.8rem', flexWrap: 'wrap' }}>
                       <button
-                        onClick={() => handleUpdateApproval(ord.orderId, 'APPROVED')}
-                        disabled={updatingId === ord.orderId || approvalStatus === 'APPROVED'}
+                        onClick={() => handleUpdateApproval(ord.orderId || ord._id, 'APPROVED')}
+                        disabled={updatingId === (ord.orderId || ord._id) || approvalStatus === 'APPROVED'}
                         style={{
-                          backgroundColor: approvalStatus === 'APPROVED' ? 'rgba(0, 230, 153, 0.2)' : '#00e699',
+                          backgroundColor: approvalStatus === 'APPROVED' ? 'rgba(0, 230, 153, 0.15)' : '#00e699',
                           color: approvalStatus === 'APPROVED' ? '#00e699' : '#000',
-                          border: 'none',
+                          border: approvalStatus === 'APPROVED' ? '1px solid #00e699' : 'none',
                           padding: '6px 14px',
                           borderRadius: '6px',
                           fontSize: '0.75rem',
                           fontWeight: 800,
-                          cursor: approvalStatus === 'APPROVED' ? 'default' : 'pointer',
+                          cursor: (updatingId === (ord.orderId || ord._id) || approvalStatus === 'APPROVED') ? 'default' : 'pointer',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '4px'
+                          gap: '5px',
+                          opacity: updatingId === (ord.orderId || ord._id) ? 0.6 : 1,
+                          transition: 'all 0.2s ease'
                         }}
                       >
-                        <CheckCircle2 size={14} /> APPROVE ORDER
+                        <CheckCircle2 size={14} /> {approvalStatus === 'APPROVED' ? 'APPROVED' : 'APPROVE ORDER'}
                       </button>
 
                       <button
-                        onClick={() => handleUpdateApproval(ord.orderId, 'DISPATCHED')}
-                        disabled={updatingId === ord.orderId || approvalStatus === 'DISPATCHED'}
+                        onClick={() => handleUpdateApproval(ord.orderId || ord._id, 'DISPATCHED')}
+                        disabled={updatingId === (ord.orderId || ord._id) || approvalStatus === 'DISPATCHED'}
                         style={{
-                          backgroundColor: approvalStatus === 'DISPATCHED' ? 'rgba(0, 240, 255, 0.2)' : '#00f0ff',
+                          backgroundColor: approvalStatus === 'DISPATCHED' ? 'rgba(0, 240, 255, 0.15)' : '#00f0ff',
                           color: approvalStatus === 'DISPATCHED' ? '#00f0ff' : '#000',
-                          border: 'none',
+                          border: approvalStatus === 'DISPATCHED' ? '1px solid #00f0ff' : 'none',
                           padding: '6px 14px',
                           borderRadius: '6px',
                           fontSize: '0.75rem',
                           fontWeight: 800,
-                          cursor: approvalStatus === 'DISPATCHED' ? 'default' : 'pointer',
+                          cursor: (updatingId === (ord.orderId || ord._id) || approvalStatus === 'DISPATCHED') ? 'default' : 'pointer',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '4px'
+                          gap: '5px',
+                          opacity: updatingId === (ord.orderId || ord._id) ? 0.6 : 1,
+                          transition: 'all 0.2s ease'
                         }}
                       >
-                        <Truck size={14} /> MARK DISPATCHED
+                        <Truck size={14} /> {approvalStatus === 'DISPATCHED' ? 'DISPATCHED' : 'MARK DISPATCHED'}
                       </button>
 
                       <button
-                        onClick={() => handleUpdateApproval(ord.orderId, 'REJECTED')}
-                        disabled={updatingId === ord.orderId || approvalStatus === 'REJECTED'}
+                        onClick={() => handleUpdateApproval(ord.orderId || ord._id, 'REJECTED')}
+                        disabled={updatingId === (ord.orderId || ord._id) || approvalStatus === 'REJECTED'}
                         style={{
-                          backgroundColor: 'rgba(255, 0, 85, 0.15)',
-                          color: '#ff0055',
-                          border: '1px solid #ff0055',
-                          padding: '6px 12px',
+                          backgroundColor: approvalStatus === 'REJECTED' ? 'rgba(255, 0, 85, 0.15)' : '#ff0055',
+                          color: approvalStatus === 'REJECTED' ? '#ff0055' : '#ffffff',
+                          border: approvalStatus === 'REJECTED' ? '1px solid rgba(255, 0, 85, 0.4)' : 'none',
+                          padding: '6px 14px',
                           borderRadius: '6px',
                           fontSize: '0.75rem',
-                          fontWeight: 700,
-                          cursor: approvalStatus === 'REJECTED' ? 'default' : 'pointer',
+                          fontWeight: 800,
+                          cursor: (updatingId === (ord.orderId || ord._id) || approvalStatus === 'REJECTED') ? 'default' : 'pointer',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '4px'
+                          gap: '5px',
+                          opacity: updatingId === (ord.orderId || ord._id) ? 0.6 : 1,
+                          boxShadow: approvalStatus === 'REJECTED' ? 'none' : '0 2px 10px rgba(255, 0, 85, 0.35)',
+                          transition: 'all 0.2s ease'
                         }}
                       >
-                        <XCircle size={14} /> REJECT
+                        {updatingId === (ord.orderId || ord._id) ? (
+                          <>
+                            <RefreshCw size={14} className="animate-spin" /> UPDATING...
+                          </>
+                        ) : (
+                          <>
+                            <XCircle size={14} /> {approvalStatus === 'REJECTED' ? 'REJECTED' : 'REJECT ORDER'}
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>

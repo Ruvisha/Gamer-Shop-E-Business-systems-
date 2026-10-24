@@ -111,6 +111,9 @@ export function formatProductForClient(product) {
   }
   p.image = resolveImageUrl(p.image, `/api/images/${p.id}`);
   p.fallbackImage = resolveImageUrl(p.fallbackImage, `/images/${p.id}.jpg`);
+  p.specs = (p.specs && typeof p.specs === "object") ? p.specs : {};
+  p.wattage = typeof p.wattage === "number" ? p.wattage : 0;
+  p.stock = typeof p.stock === "number" ? p.stock : 10;
   return p;
 }
 
@@ -421,9 +424,10 @@ app.get("/api/products", async (req, res) => {
   const { category, search, isFlashSale } = req.query;
 
   try {
+    await connectDB();
     let filter = {};
     if (category && category !== 'all') {
-      filter.category = category;
+      filter.category = new RegExp(`^${category}$`, 'i');
     }
     if (isFlashSale === 'true') {
       filter.isFlashSale = true;
@@ -582,35 +586,74 @@ app.post("/api/products/:id/reviews", async (req, res) => {
 app.post("/api/products", async (req, res) => {
   const { name, category, brand, price, originalPrice, stock, image, description, specs, isFeatured, isFlashSale, tag, wattage } = req.body;
   
-  if (!name || !price || !category) {
-    return res.status(400).json({ error: "Product name, price, and category are required." });
+  if (!name || price === undefined || price === null || !category) {
+    return res.status(400).json({ error: "Product title, price, and category are required." });
   }
 
-  const productId = `custom-${Date.now()}`;
-  const validImage = resolveImageUrl(image);
+  const parsedPrice = parseFloat(price);
+  if (isNaN(parsedPrice) || parsedPrice < 0) {
+    return res.status(400).json({ error: "Please provide a valid non-negative product price." });
+  }
+
+  const productId = req.body.id || `custom-${Date.now()}`;
+  let finalImageUrl = image;
+
+  // Process uploaded base64 image and save directly to MongoDB ImageModel
+  if (image && typeof image === "string" && image.startsWith("data:image/")) {
+    const matches = image.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+    if (matches) {
+      try {
+        await connectDB();
+        const contentType = matches[1];
+        const buffer = Buffer.from(matches[2], "base64");
+        await ImageModel.findOneAndUpdate(
+          { imageId: productId },
+          {
+            imageId: productId,
+            filename: `${productId}.${contentType.split("/")[1] || "jpg"}`,
+            contentType,
+            data: buffer,
+            fileSize: buffer.length
+          },
+          { upsert: true, new: true }
+        );
+        finalImageUrl = `/api/images/${productId}`;
+      } catch (imgErr) {
+        console.error("[Products] Error saving base64 image to MongoDB:", imgErr.message);
+      }
+    }
+  }
+
+  const resolvedImg = resolveImageUrl(finalImageUrl);
+  const parsedOrigPrice = originalPrice !== undefined && !isNaN(parseFloat(originalPrice)) ? parseFloat(originalPrice) : parsedPrice;
+  const parsedStock = stock !== undefined && !isNaN(parseInt(stock, 10)) ? Math.max(0, parseInt(stock, 10)) : 10;
+  const parsedWattage = wattage !== undefined && !isNaN(parseInt(wattage, 10)) ? Math.max(0, parseInt(wattage, 10)) : 0;
 
   const newProductData = {
     id: productId,
-    name,
-    category: category || 'gpu',
-    brand: brand || 'Generic',
-    price: parseFloat(price),
-    originalPrice: originalPrice ? parseFloat(originalPrice) : parseFloat(price),
+    name: name.trim(),
+    category: (category || 'gpu').toLowerCase().trim(),
+    brand: brand ? brand.trim() : 'Generic Gaming',
+    price: parsedPrice,
+    originalPrice: parsedOrigPrice >= parsedPrice ? parsedOrigPrice : parsedPrice,
     rating: 5.0,
-    reviewsCount: 1,
-    stock: stock ? parseInt(stock, 10) : 10,
-    wattage: wattage ? parseInt(wattage, 10) : 0,
+    reviewsCount: 0,
+    reviews: [],
+    stock: parsedStock,
+    wattage: parsedWattage,
     isFlashSale: Boolean(isFlashSale),
     isFeatured: isFeatured !== undefined ? Boolean(isFeatured) : true,
-    tag: tag || '',
-    image: validImage,
-    fallbackImage: validImage,
-    description: description || 'High-performance PC gaming part.',
-    specs: specs || { memory: 'Standard', interface: 'PCIe 4.0' }
+    tag: tag ? tag.trim() : (isFlashSale ? 'FLASH SALE' : 'NEW RELEASE'),
+    image: resolvedImg,
+    fallbackImage: resolvedImg,
+    description: description ? description.trim() : `High-performance ${category.toUpperCase()} PC component engineered for peak gaming speed.`,
+    specs: (specs && typeof specs === 'object') ? specs : {}
   };
 
   try {
+    await connectDB();
     const createdProduct = await Product.create(newProductData);
+    console.log(`[Products] Successfully created product: "${createdProduct.name}" (${createdProduct.id}) in MongoDB`);
     return res.status(201).json({
       success: true,
       message: "Product created directly in MongoDB",
@@ -618,7 +661,7 @@ app.post("/api/products", async (req, res) => {
     });
   } catch (err) {
     console.error("[Products] MongoDB create error:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: `Failed to create product in MongoDB: ${err.message}` });
   }
 });
 
@@ -627,18 +670,70 @@ app.put("/api/products/:id", async (req, res) => {
   const { id } = req.params;
   let updatePayload = { ...req.body };
 
-  if (updatePayload.image) {
+  if (updatePayload.name) updatePayload.name = updatePayload.name.trim();
+  if (updatePayload.category) updatePayload.category = updatePayload.category.toLowerCase().trim();
+  if (updatePayload.brand) updatePayload.brand = updatePayload.brand.trim();
+  if (updatePayload.tag !== undefined) updatePayload.tag = updatePayload.tag.trim();
+  if (updatePayload.description !== undefined) updatePayload.description = updatePayload.description.trim();
+
+  if (updatePayload.price !== undefined) {
+    const p = parseFloat(updatePayload.price);
+    if (!isNaN(p)) updatePayload.price = p;
+  }
+  if (updatePayload.originalPrice !== undefined) {
+    const op = parseFloat(updatePayload.originalPrice);
+    if (!isNaN(op)) updatePayload.originalPrice = op;
+  }
+  if (updatePayload.stock !== undefined) {
+    const s = parseInt(updatePayload.stock, 10);
+    if (!isNaN(s)) updatePayload.stock = Math.max(0, s);
+  }
+  if (updatePayload.wattage !== undefined) {
+    const w = parseInt(updatePayload.wattage, 10);
+    if (!isNaN(w)) updatePayload.wattage = Math.max(0, w);
+  }
+  if (updatePayload.isFeatured !== undefined) {
+    updatePayload.isFeatured = Boolean(updatePayload.isFeatured);
+  }
+  if (updatePayload.isFlashSale !== undefined) {
+    updatePayload.isFlashSale = Boolean(updatePayload.isFlashSale);
+  }
+  if (updatePayload.specs && typeof updatePayload.specs === "object") {
+    updatePayload.specs = updatePayload.specs;
+  }
+
+  // Handle uploaded base64 image update
+  if (updatePayload.image && typeof updatePayload.image === "string" && updatePayload.image.startsWith("data:image/")) {
+    const matches = updatePayload.image.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+    if (matches) {
+      try {
+        await connectDB();
+        const contentType = matches[1];
+        const buffer = Buffer.from(matches[2], "base64");
+        await ImageModel.findOneAndUpdate(
+          { imageId: id },
+          {
+            imageId: id,
+            filename: `${id}.${contentType.split("/")[1] || "jpg"}`,
+            contentType,
+            data: buffer,
+            fileSize: buffer.length
+          },
+          { upsert: true, new: true }
+        );
+        updatePayload.image = `/api/images/${id}`;
+        updatePayload.fallbackImage = `/api/images/${id}`;
+      } catch (imgErr) {
+        console.error("[Products] Error saving updated base64 image:", imgErr.message);
+      }
+    }
+  } else if (updatePayload.image) {
     updatePayload.image = resolveImageUrl(updatePayload.image);
     updatePayload.fallbackImage = updatePayload.image;
   }
-  if (updatePayload.price) {
-    updatePayload.price = parseFloat(updatePayload.price);
-  }
-  if (updatePayload.stock !== undefined) {
-    updatePayload.stock = parseInt(updatePayload.stock, 10);
-  }
 
   try {
+    await connectDB();
     const updatedDbProduct = await Product.findOneAndUpdate(
       { $or: [{ id: id }, ...(mongoose.Types.ObjectId.isValid(id) ? [{ _id: id }] : [])] },
       { $set: updatePayload },
@@ -647,6 +742,7 @@ app.put("/api/products/:id", async (req, res) => {
     if (!updatedDbProduct) {
       return res.status(404).json({ error: "Product not found in MongoDB database" });
     }
+    console.log(`[Products] Successfully updated product: "${updatedDbProduct.name}" (${id}) in MongoDB`);
     return res.json({
       success: true,
       message: "Product updated successfully in MongoDB",
@@ -654,7 +750,7 @@ app.put("/api/products/:id", async (req, res) => {
     });
   } catch (err) {
     console.error("[Products] MongoDB update error:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: `Failed to update product in MongoDB: ${err.message}` });
   }
 });
 
@@ -663,17 +759,19 @@ app.delete("/api/products/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
+    await connectDB();
     await ImageModel.findOneAndDelete({ imageId: id });
     const deletedProduct = await Product.findOneAndDelete({
       $or: [{ id: id }, ...(mongoose.Types.ObjectId.isValid(id) ? [{ _id: id }] : [])]
     });
     if (deletedProduct) {
+      console.log(`[Products] Successfully deleted product: "${deletedProduct.name}" (${id}) from MongoDB`);
       return res.json({ success: true, message: "Product deleted directly from MongoDB", id });
     }
     return res.status(404).json({ error: "Product not found in MongoDB database" });
   } catch (err) {
     console.error("[Products] MongoDB delete error:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: `Failed to delete product from MongoDB: ${err.message}` });
   }
 });
 
@@ -760,7 +858,7 @@ merchantSecret: PAYHERE_MERCHANT_SECRET,
       currency,
       amount: formattedAmount,
       hash,
-      returnUrl: "http://localhost:5173/?payment=success&orderId=" + orderId,
+      returnUrl: "http://localhost:5173/?payment=success&orderId=" + encodeURIComponent(orderId),
       cancelUrl: "http://localhost:5173/?payment=cancel",
       notifyUrl: "http://localhost:3000/api/payment/notify",
       customerDetails: {
@@ -870,32 +968,66 @@ app.get("/api/user/orders", async (req, res) => {
 });
 
 // PUT /api/admin/orders/:orderId/approval (Admin approves or updates order status)
-app.put("/api/admin/orders/:orderId/approval", async (req, res) => {
-  const { orderId } = req.params;
+app.put(["/api/admin/orders/:orderId/approval", "/api/admin/orders/approval", "/api/admin/orders/:orderId"], async (req, res) => {
+  const orderId = req.params.orderId || req.body.orderId;
   const { adminApprovalStatus = "APPROVED", paymentStatus } = req.body;
+
+  if (!orderId) {
+    return res.status(400).json({ success: false, error: "Missing order ID" });
+  }
+
+  // Ensure DB connection if needed
+  if (mongoose.connection.readyState !== 1) {
+    try {
+      await connectDB();
+    } catch (e) {
+      console.warn("[Order Approval] DB connection check failed:", e.message);
+    }
+  }
 
   if (mongoose.connection.readyState === 1) {
     try {
+      const rawId = String(orderId).trim();
+      const cleanId = rawId.replace(/^#/, "");
+      const hashId = `#${cleanId}`;
+
       let updateFields = { adminApprovalStatus };
-      if (paymentStatus) updateFields.paymentStatus = paymentStatus;
+      if (paymentStatus) {
+        updateFields.paymentStatus = paymentStatus;
+      } else if (adminApprovalStatus === "REJECTED") {
+        updateFields.paymentStatus = "CANCELLED";
+      }
+
+      const queryConditions = [
+        { orderId: rawId },
+        { orderId: cleanId },
+        { orderId: hashId }
+      ];
+      if (mongoose.isValidObjectId(rawId)) {
+        queryConditions.push({ _id: rawId });
+      }
 
       const updatedOrder = await Order.findOneAndUpdate(
-        { orderId },
+        { $or: queryConditions },
         { $set: updateFields },
         { new: true }
       );
+
       if (updatedOrder) {
+        console.log(`[Admin Order Approval] Order ${updatedOrder.orderId} updated to ${adminApprovalStatus} (Payment: ${updatedOrder.paymentStatus})`);
         return res.json({
           success: true,
-          message: `Order ${orderId} admin approval status updated to ${adminApprovalStatus}!`,
+          message: `Order ${updatedOrder.orderId} admin approval status updated to ${adminApprovalStatus}!`,
           order: updatedOrder
         });
       }
     } catch (err) {
-      return res.status(500).json({ error: err.message });
+      console.error("[Admin Order Approval] DB update error:", err.message);
+      return res.status(500).json({ success: false, error: err.message });
     }
   }
-  res.status(404).json({ error: "Order not found" });
+
+  res.status(404).json({ success: false, error: "Order not found" });
 });
 
 const PORT = process.env.PORT || 3000;

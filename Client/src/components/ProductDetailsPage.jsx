@@ -569,7 +569,7 @@ export default function ProductDetailsPage({
                 gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
                 gap: '0.8rem'
               }}>
-                {Object.entries(product.specs).map(([key, val]) => (
+                {Object.entries(product.specs || {}).map(([key, val]) => (
                   <div
                     key={key}
                     style={{
@@ -814,7 +814,7 @@ export default function ProductDetailsPage({
                 gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
                 gap: '1rem'
               }}>
-                {Object.entries(product.specs).map(([key, val], idx) => (
+                {Object.entries(product.specs || {}).map(([key, val], idx) => (
                   <div
                     key={key}
                     style={{

@@ -308,30 +308,30 @@ export default function App() {
         } else {
           setAllProducts(prev => [savedItem, ...prev]);
         }
-        // Refresh directly from database
-        fetchProducts();
+        // Force re-fetch fresh product list directly from MongoDB
+        await fetchProducts();
+
+        setToast({
+          type: 'auth',
+          title: isEditing ? 'PRODUCT UPDATED IN DB' : 'PRODUCT SAVED TO DB',
+          message: `"${savedItem.name || productData.name}" saved to MongoDB database successfully!`
+        });
+
+        return savedItem;
       } else {
-        if (isEditing) {
-          setAllProducts(prev => prev.map(p => p.id === productData.id ? { ...p, ...productData } : p));
-        } else {
-          const newProduct = { ...productData, id: `custom-${Date.now()}` };
-          setAllProducts(prev => [newProduct, ...prev]);
-        }
+        const errData = res ? await res.json().catch(() => null) : null;
+        const errMsg = errData?.error || `Server returned ${res?.status || 'network failure'}`;
+        throw new Error(errMsg);
       }
     } catch (err) {
-      if (isEditing) {
-        setAllProducts(prev => prev.map(p => p.id === productData.id ? { ...p, ...productData } : p));
-      } else {
-        const newProduct = { ...productData, id: `custom-${Date.now()}` };
-        setAllProducts(prev => [newProduct, ...prev]);
-      }
+      console.error('Failed to save product to MongoDB:', err);
+      setToast({
+        type: 'cart',
+        title: 'DATABASE SAVE ERROR',
+        message: err.message || 'Could not save product to MongoDB.'
+      });
+      throw err;
     }
-
-    setToast({
-      type: 'auth',
-      title: isEditing ? 'PRODUCT UPDATED IN DB' : 'PRODUCT SAVED TO DB',
-      message: `${productData.name} saved to MongoDB successfully!`
-    });
   };
 
   const handleDeleteProduct = async (productId) => {
@@ -341,21 +341,30 @@ export default function App() {
       }).catch(() => null);
 
       if (!res || !res.ok) {
-        await fetch(`http://localhost:3000/api/products/${productId}`, {
+        res = await fetch(`http://localhost:3000/api/products/${productId}`, {
           method: 'DELETE'
         }).catch(() => null);
       }
-      fetchProducts();
-    } catch (err) {
-      console.log('Backend delete request skipped, removing locally:', err);
-    }
 
-    setAllProducts(prev => prev.filter(p => p.id !== productId));
-    setToast({
-      type: 'info',
-      title: 'PRODUCT DELETED FROM DB',
-      message: 'Product removed from MongoDB database.'
-    });
+      if (res && res.ok) {
+        await fetchProducts();
+        setToast({
+          type: 'info',
+          title: 'PRODUCT DELETED FROM DB',
+          message: 'Product removed from MongoDB database successfully.'
+        });
+      } else {
+        const errData = res ? await res.json().catch(() => null) : null;
+        throw new Error(errData?.error || 'Failed to delete from MongoDB');
+      }
+    } catch (err) {
+      console.error('Failed to delete product from database:', err);
+      setToast({
+        type: 'cart',
+        title: 'DELETE FAILED',
+        message: err.message || 'Could not delete product from database.'
+      });
+    }
   };
 
   const totalCartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
