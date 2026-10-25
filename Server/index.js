@@ -19,6 +19,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+process.on('uncaughtException', (err) => {
+  console.error('[Server Error] Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Server Error] Unhandled Rejection:', reason);
+});
+
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ limit: "25mb", extended: true }));
 
@@ -582,76 +590,123 @@ app.post("/api/products/:id/reviews", async (req, res) => {
   }
 });
 
+// Currency & Number sanitization helper
+export function parseCurrencyNumber(val) {
+  if (val === undefined || val === null || val === '') return NaN;
+  if (typeof val === 'number') return isNaN(val) ? NaN : val;
+  let s = String(val).trim();
+  s = s.replace(/^(rs\.?|lkr|\$|eur|£)\s*/i, '');
+  s = s.replace(/,/g, '');
+  s = s.replace(/[^0-9.]/g, '');
+  return parseFloat(s);
+}
+
 // ADMIN ONLY: POST /api/products (Create Product directly in MongoDB)
 app.post("/api/products", async (req, res) => {
   const { name, category, brand, price, originalPrice, stock, image, description, specs, isFeatured, isFlashSale, tag, wattage } = req.body;
   
-  if (!name || price === undefined || price === null || !category) {
-    return res.status(400).json({ error: "Product title, price, and category are required." });
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: "Product title is required." });
   }
 
-  const parsedPrice = parseFloat(price);
+  const cleanCat = (category || 'gpu').toLowerCase().trim();
+
+  // Robust price sanitization (handles numeric values, strings with commas or currency symbols like 'Rs. 450,000')
+  const parsedPrice = parseCurrencyNumber(price);
   if (isNaN(parsedPrice) || parsedPrice < 0) {
     return res.status(400).json({ error: "Please provide a valid non-negative product price." });
   }
 
-  const productId = req.body.id || `custom-${Date.now()}`;
-  let finalImageUrl = image;
-
-  // Process uploaded base64 image and save directly to MongoDB ImageModel
-  if (image && typeof image === "string" && image.startsWith("data:image/")) {
-    const matches = image.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
-    if (matches) {
-      try {
-        await connectDB();
-        const contentType = matches[1];
-        const buffer = Buffer.from(matches[2], "base64");
-        await ImageModel.findOneAndUpdate(
-          { imageId: productId },
-          {
-            imageId: productId,
-            filename: `${productId}.${contentType.split("/")[1] || "jpg"}`,
-            contentType,
-            data: buffer,
-            fileSize: buffer.length
-          },
-          { upsert: true, new: true }
-        );
-        finalImageUrl = `/api/images/${productId}`;
-      } catch (imgErr) {
-        console.error("[Products] Error saving base64 image to MongoDB:", imgErr.message);
-      }
+  // Robust originalPrice sanitization
+  let parsedOrigPrice = parsedPrice;
+  if (originalPrice !== undefined && originalPrice !== null && originalPrice !== '') {
+    const pOrig = parseCurrencyNumber(originalPrice);
+    if (!isNaN(pOrig) && pOrig >= parsedPrice) {
+      parsedOrigPrice = pOrig;
     }
   }
 
-  const resolvedImg = resolveImageUrl(finalImageUrl);
-  const parsedOrigPrice = originalPrice !== undefined && !isNaN(parseFloat(originalPrice)) ? parseFloat(originalPrice) : parsedPrice;
-  const parsedStock = stock !== undefined && !isNaN(parseInt(stock, 10)) ? Math.max(0, parseInt(stock, 10)) : 10;
-  const parsedWattage = wattage !== undefined && !isNaN(parseInt(wattage, 10)) ? Math.max(0, parseInt(wattage, 10)) : 0;
+  const parsedStock = (stock !== undefined && !isNaN(parseInt(stock, 10))) ? Math.max(0, parseInt(stock, 10)) : 10;
+  const parsedWattage = (wattage !== undefined && !isNaN(parseInt(wattage, 10))) ? Math.max(0, parseInt(wattage, 10)) : 0;
 
-  const newProductData = {
-    id: productId,
-    name: name.trim(),
-    category: (category || 'gpu').toLowerCase().trim(),
-    brand: brand ? brand.trim() : 'Generic Gaming',
-    price: parsedPrice,
-    originalPrice: parsedOrigPrice >= parsedPrice ? parsedOrigPrice : parsedPrice,
-    rating: 5.0,
-    reviewsCount: 0,
-    reviews: [],
-    stock: parsedStock,
-    wattage: parsedWattage,
-    isFlashSale: Boolean(isFlashSale),
-    isFeatured: isFeatured !== undefined ? Boolean(isFeatured) : true,
-    tag: tag ? tag.trim() : (isFlashSale ? 'FLASH SALE' : 'NEW RELEASE'),
-    image: resolvedImg,
-    fallbackImage: resolvedImg,
-    description: description ? description.trim() : `High-performance ${category.toUpperCase()} PC component engineered for peak gaming speed.`,
-    specs: (specs && typeof specs === 'object') ? specs : {}
-  };
+  // Collision-safe product ID generation
+  let productId = req.body.id;
+  if (!productId || typeof productId !== 'string' || !productId.trim()) {
+    const catPrefix = cleanCat.replace(/[^a-z0-9]/g, '') || 'item';
+    productId = `${catPrefix}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 7)}`;
+  } else {
+    productId = productId.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+  }
 
   try {
     await connectDB();
+
+    // Check if an existing product already has this ID to prevent E11000 duplicate key error
+    const existingProduct = await Product.findOne({ id: productId });
+    if (existingProduct) {
+      productId = `${productId}-${Date.now().toString(36)}-${Math.floor(Math.random() * 1000)}`;
+    }
+
+    let finalImageUrl = image;
+
+    // Process uploaded base64 image and save directly to MongoDB ImageModel
+    if (image && typeof image === "string" && image.startsWith("data:image")) {
+      const commaIdx = image.indexOf(',');
+      if (commaIdx !== -1) {
+        try {
+          const header = image.substring(0, commaIdx);
+          const base64Data = image.substring(commaIdx + 1);
+          const mimeMatch = header.match(/data:([^;]+)/);
+          const contentType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+          const buffer = Buffer.from(base64Data, "base64");
+
+          await ImageModel.findOneAndUpdate(
+            { imageId: productId },
+            {
+              $set: {
+                imageId: productId,
+                filename: `${productId}.${contentType.split("/")[1] || "jpg"}`,
+                contentType,
+                data: buffer,
+                fileSize: buffer.length
+              }
+            },
+            { upsert: true, returnDocument: 'after' }
+          );
+          finalImageUrl = `/api/images/${productId}`;
+        } catch (imgErr) {
+          console.error("[Products] Error saving base64 image to MongoDB:", imgErr.message);
+        }
+      }
+      // Never store massive raw data URIs directly in Product document (avoids 16MB BSON limit)
+      if (finalImageUrl && finalImageUrl.startsWith("data:image")) {
+        finalImageUrl = `/api/images/${productId}`;
+      }
+    }
+
+    const resolvedImg = resolveImageUrl(finalImageUrl, `/api/images/${productId}`);
+
+    const newProductData = {
+      id: productId,
+      name: name.trim(),
+      category: cleanCat,
+      brand: brand && brand.trim() ? brand.trim() : 'Generic Gaming',
+      price: parsedPrice,
+      originalPrice: parsedOrigPrice,
+      rating: 5.0,
+      reviewsCount: 0,
+      reviews: [],
+      stock: parsedStock,
+      wattage: parsedWattage,
+      isFlashSale: Boolean(isFlashSale),
+      isFeatured: isFeatured !== undefined ? Boolean(isFeatured) : true,
+      tag: tag && tag.trim() ? tag.trim() : (isFlashSale ? 'FLASH SALE' : 'NEW RELEASE'),
+      image: resolvedImg,
+      fallbackImage: resolvedImg,
+      description: description && description.trim() ? description.trim() : `High-performance ${cleanCat.toUpperCase()} PC component engineered for peak gaming speed.`,
+      specs: (specs && typeof specs === 'object') ? specs : {}
+    };
+
     const createdProduct = await Product.create(newProductData);
     console.log(`[Products] Successfully created product: "${createdProduct.name}" (${createdProduct.id}) in MongoDB`);
     return res.status(201).json({
@@ -660,8 +715,8 @@ app.post("/api/products", async (req, res) => {
       product: formatProductForClient(createdProduct)
     });
   } catch (err) {
-    console.error("[Products] MongoDB create error:", err.message);
-    res.status(500).json({ error: `Failed to create product in MongoDB: ${err.message}` });
+    console.error("[Products] MongoDB create error:", err);
+    return res.status(500).json({ error: `Failed to create product in MongoDB: ${err.message}` });
   }
 });
 
@@ -677,12 +732,12 @@ app.put("/api/products/:id", async (req, res) => {
   if (updatePayload.description !== undefined) updatePayload.description = updatePayload.description.trim();
 
   if (updatePayload.price !== undefined) {
-    const p = parseFloat(updatePayload.price);
-    if (!isNaN(p)) updatePayload.price = p;
+    const p = parseCurrencyNumber(updatePayload.price);
+    if (!isNaN(p) && p >= 0) updatePayload.price = p;
   }
   if (updatePayload.originalPrice !== undefined) {
-    const op = parseFloat(updatePayload.originalPrice);
-    if (!isNaN(op)) updatePayload.originalPrice = op;
+    const op = parseCurrencyNumber(updatePayload.originalPrice);
+    if (!isNaN(op) && op >= 0) updatePayload.originalPrice = op;
   }
   if (updatePayload.stock !== undefined) {
     const s = parseInt(updatePayload.stock, 10);
@@ -703,23 +758,29 @@ app.put("/api/products/:id", async (req, res) => {
   }
 
   // Handle uploaded base64 image update
-  if (updatePayload.image && typeof updatePayload.image === "string" && updatePayload.image.startsWith("data:image/")) {
-    const matches = updatePayload.image.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
-    if (matches) {
+  if (updatePayload.image && typeof updatePayload.image === "string" && updatePayload.image.startsWith("data:image")) {
+    const commaIdx = updatePayload.image.indexOf(',');
+    if (commaIdx !== -1) {
       try {
         await connectDB();
-        const contentType = matches[1];
-        const buffer = Buffer.from(matches[2], "base64");
+        const header = updatePayload.image.substring(0, commaIdx);
+        const base64Data = updatePayload.image.substring(commaIdx + 1);
+        const mimeMatch = header.match(/data:([^;]+)/);
+        const contentType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+        const buffer = Buffer.from(base64Data, "base64");
+
         await ImageModel.findOneAndUpdate(
           { imageId: id },
           {
-            imageId: id,
-            filename: `${id}.${contentType.split("/")[1] || "jpg"}`,
-            contentType,
-            data: buffer,
-            fileSize: buffer.length
+            $set: {
+              imageId: id,
+              filename: `${id}.${contentType.split("/")[1] || "jpg"}`,
+              contentType,
+              data: buffer,
+              fileSize: buffer.length
+            }
           },
-          { upsert: true, new: true }
+          { upsert: true, returnDocument: 'after' }
         );
         updatePayload.image = `/api/images/${id}`;
         updatePayload.fallbackImage = `/api/images/${id}`;
@@ -727,8 +788,12 @@ app.put("/api/products/:id", async (req, res) => {
         console.error("[Products] Error saving updated base64 image:", imgErr.message);
       }
     }
+    if (updatePayload.image && updatePayload.image.startsWith("data:image")) {
+      updatePayload.image = `/api/images/${id}`;
+      updatePayload.fallbackImage = `/api/images/${id}`;
+    }
   } else if (updatePayload.image) {
-    updatePayload.image = resolveImageUrl(updatePayload.image);
+    updatePayload.image = resolveImageUrl(updatePayload.image, `/api/images/${id}`);
     updatePayload.fallbackImage = updatePayload.image;
   }
 
@@ -737,7 +802,7 @@ app.put("/api/products/:id", async (req, res) => {
     const updatedDbProduct = await Product.findOneAndUpdate(
       { $or: [{ id: id }, ...(mongoose.Types.ObjectId.isValid(id) ? [{ _id: id }] : [])] },
       { $set: updatePayload },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!updatedDbProduct) {
       return res.status(404).json({ error: "Product not found in MongoDB database" });

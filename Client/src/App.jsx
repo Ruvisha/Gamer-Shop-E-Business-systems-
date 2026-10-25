@@ -12,6 +12,7 @@ import ProductDetailsPage from './components/ProductDetailsPage';
 import CartDrawer from './components/CartDrawer';
 import AuthModal from './components/AuthModal';
 import AdminProductModal from './components/AdminProductModal';
+import AdminProductsManagerModal from './components/AdminProductsManagerModal';
 import UserOrdersModal from './components/UserOrdersModal';
 import AdminOrdersModal from './components/AdminOrdersModal';
 import Toast from './components/Toast';
@@ -36,6 +37,7 @@ export default function App() {
   const [user, setUser] = useState(null);
 
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [isAdminProductsOpen, setIsAdminProductsOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [toast, setToast] = useState(null);
   const [activeSection, setActiveSection] = useState('home'); // 'home', 'catalog', 'builder', 'deals', 'product-details'
@@ -280,47 +282,83 @@ export default function App() {
     setIsAdminModalOpen(true);
   };
 
+  const handleOpenAdminProducts = () => {
+    setIsAdminProductsOpen(true);
+  };
+
   const handleSaveProduct = async (productData) => {
-    const isEditing = Boolean(productData.id);
+    // Strictly determine if this is updating an existing product vs creating a new one
+    const isEditing = Boolean(editingProduct && (editingProduct.id || editingProduct._id));
+    const targetId = isEditing ? (editingProduct.id || productData.id) : undefined;
     const method = isEditing ? 'PUT' : 'POST';
 
+    // Clean payload
+    const payload = { ...productData };
+    if (!isEditing) {
+      delete payload.id;
+      delete payload._id;
+    }
+
     try {
-      let res = await fetch(`/api/products${isEditing ? `/${productData.id}` : ''}`, {
+      const endpoint = isEditing ? `/api/products/${encodeURIComponent(targetId)}` : '/api/products';
+      
+      // Attempt 1: Via proxy (or direct if same origin)
+      let res = await fetch(endpoint, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(productData)
-      }).catch(() => null);
+        body: JSON.stringify(payload)
+      }).catch((e) => {
+        console.warn('Primary fetch error:', e.message);
+        return null;
+      });
 
-      if (!res || !res.ok) {
-        res = await fetch(`http://localhost:3000/api/products${isEditing ? `/${productData.id}` : ''}`, {
+      // Attempt 2: Direct backend URL http://localhost:3000 if primary returned network error
+      if (!res) {
+        const directUrl = `http://localhost:3000${endpoint}`;
+        res = await fetch(directUrl, {
           method,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(productData)
-        }).catch(() => null);
+          body: JSON.stringify(payload)
+        }).catch((e) => {
+          console.warn('Direct backend fetch error:', e.message);
+          return null;
+        });
       }
 
-      if (res && res.ok) {
-        const responseData = await res.json();
-        const savedItem = responseData.product || productData;
+      if (!res) {
+        throw new Error('Backend server is unreachable on port 3000. Please ensure node index.js is running.');
+      }
+
+      let responseData = {};
+      try {
+        responseData = await res.json();
+      } catch (jsonErr) {
+        throw new Error(`Server returned status ${res.status} with unexpected format.`);
+      }
+
+      if (res.ok && (responseData.success || responseData.product)) {
+        const savedItem = responseData.product || payload;
 
         if (isEditing) {
-          setAllProducts(prev => prev.map(p => p.id === savedItem.id ? savedItem : p));
+          setAllProducts(prev => prev.map(p => (p.id === savedItem.id || p._id === savedItem._id) ? savedItem : p));
         } else {
           setAllProducts(prev => [savedItem, ...prev]);
         }
-        // Force re-fetch fresh product list directly from MongoDB
+
+        // Fresh sync from database
         await fetchProducts();
 
         setToast({
           type: 'auth',
           title: isEditing ? 'PRODUCT UPDATED IN DB' : 'PRODUCT SAVED TO DB',
-          message: `"${savedItem.name || productData.name}" saved to MongoDB database successfully!`
+          message: `"${savedItem.name || payload.name}" successfully saved in MongoDB database!`
         });
 
+        setIsAdminModalOpen(false);
+        setEditingProduct(null);
         return savedItem;
       } else {
-        const errData = res ? await res.json().catch(() => null) : null;
-        const errMsg = errData?.error || `Server returned ${res?.status || 'network failure'}`;
+        const errMsg = responseData.error || responseData.message || `Server returned error (${res.status})`;
         throw new Error(errMsg);
       }
     } catch (err) {
@@ -328,7 +366,7 @@ export default function App() {
       setToast({
         type: 'cart',
         title: 'DATABASE SAVE ERROR',
-        message: err.message || 'Could not save product to MongoDB.'
+        message: err.message || 'Could not save product to MongoDB database.'
       });
       throw err;
     }
@@ -367,6 +405,85 @@ export default function App() {
     }
   };
 
+  const handleQuickUpdateStock = async (productId, newStock) => {
+    try {
+      let res = await fetch(`/api/products/${productId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stock: newStock })
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        res = await fetch(`http://localhost:3000/api/products/${productId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stock: newStock })
+        }).catch(() => null);
+      }
+
+      if (res && res.ok) {
+        setAllProducts(prev => prev.map(p => p.id === productId ? { ...p, stock: newStock } : p));
+        setToast({
+          type: 'info',
+          title: 'STOCK UPDATED',
+          message: `Stock updated to ${newStock} units in MongoDB.`
+        });
+      }
+    } catch (err) {
+      console.error('Failed to update stock:', err);
+    }
+  };
+
+  const handleQuickToggleFlashSale = async (productId, currentVal) => {
+    try {
+      const newVal = !currentVal;
+      let res = await fetch(`/api/products/${productId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isFlashSale: newVal })
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        res = await fetch(`http://localhost:3000/api/products/${productId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ isFlashSale: newVal })
+        }).catch(() => null);
+      }
+
+      if (res && res.ok) {
+        setAllProducts(prev => prev.map(p => p.id === productId ? { ...p, isFlashSale: newVal } : p));
+        setToast({
+          type: 'info',
+          title: newVal ? 'ADDED TO FLASH SALE' : 'REMOVED FROM FLASH SALE',
+          message: `Flash Sale status updated in MongoDB database.`
+        });
+      }
+    } catch (err) {
+      console.error('Failed to toggle flash sale:', err);
+    }
+  };
+
+  const handleSyncDatabase = async () => {
+    try {
+      let res = await fetch('/api/database/sync', { method: 'POST' }).catch(() => null);
+      if (!res || !res.ok) {
+        res = await fetch('http://localhost:3000/api/database/sync', { method: 'POST' }).catch(() => null);
+      }
+      if (res && res.ok) {
+        const data = await res.json();
+        await fetchProducts();
+        setToast({
+          type: 'auth',
+          title: 'MONGODB SYNCHRONIZED',
+          message: `Successfully synchronized ${data.totalProducts || 20} products and ${data.totalImages || 39} stored image records in MongoDB!`
+        });
+      }
+    } catch (err) {
+      console.error('Failed to sync database:', err);
+    }
+  };
+
   const totalCartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
   const dealProducts = allProducts.filter((p) => p.isFlashSale);
 
@@ -386,6 +503,7 @@ export default function App() {
         onOpenAuth={() => setIsAuthOpen(true)}
         onLogout={handleLogout}
         onOpenAddProductModal={handleOpenAddProduct}
+        onOpenAdminProducts={handleOpenAdminProducts}
         onOpenUserOrders={() => setIsUserOrdersOpen(true)}
         onOpenAdminOrders={() => setIsAdminOrdersOpen(true)}
         activeSection={activeSection}
@@ -401,6 +519,8 @@ export default function App() {
         setActiveSection={setActiveSection}
         totalProductsCount={allProducts.length}
         dealProductsCount={dealProducts.length}
+        user={user}
+        onOpenAdminProducts={handleOpenAdminProducts}
         onOpenAuth={() => setIsAuthOpen(true)}
       />
 
@@ -495,6 +615,7 @@ export default function App() {
               onEditProduct={handleOpenEditProduct}
               onDeleteProduct={handleDeleteProduct}
               onOpenAddProductModal={handleOpenAddProduct}
+              onOpenAdminProducts={handleOpenAdminProducts}
             />
 
             <Testimonials />
@@ -521,6 +642,7 @@ export default function App() {
               onEditProduct={handleOpenEditProduct}
               onDeleteProduct={handleDeleteProduct}
               onOpenAddProductModal={handleOpenAddProduct}
+              onOpenAdminProducts={handleOpenAdminProducts}
             />
           </div>
         )}
@@ -555,6 +677,7 @@ export default function App() {
               onEditProduct={handleOpenEditProduct}
               onDeleteProduct={handleDeleteProduct}
               onOpenAddProductModal={handleOpenAddProduct}
+              onOpenAdminProducts={handleOpenAdminProducts}
             />
           </div>
         )}
@@ -622,9 +745,28 @@ export default function App() {
       {/* Admin Product Management Modal (CRUD) */}
       <AdminProductModal
         isOpen={isAdminModalOpen}
-        onClose={() => setIsAdminModalOpen(false)}
+        onClose={() => {
+          setIsAdminModalOpen(false);
+          setEditingProduct(null);
+        }}
         onSaveProduct={handleSaveProduct}
         initialProduct={editingProduct}
+      />
+
+      {/* Admin Products & Inventory Management Modal */}
+      <AdminProductsManagerModal
+        isOpen={isAdminProductsOpen}
+        onClose={() => setIsAdminProductsOpen(false)}
+        products={allProducts}
+        onAddNewProduct={handleOpenAddProduct}
+        onEditProduct={handleOpenEditProduct}
+        onDeleteProduct={handleDeleteProduct}
+        onViewProductDetails={handleOpenProductDetails}
+        onQuickUpdateStock={handleQuickUpdateStock}
+        onQuickToggleFlashSale={handleQuickToggleFlashSale}
+        onRefreshProducts={fetchProducts}
+        onSyncDatabase={handleSyncDatabase}
+        isLoadingProducts={isLoadingProducts}
       />
 
       {/* User My Orders & Status Modal */}

@@ -239,6 +239,11 @@ export default function AdminProductModal({ isOpen, onClose, onSaveProduct, init
     reader.readAsDataURL(file);
   };
 
+  const isEditing = Boolean(initialProduct && (initialProduct.id || initialProduct._id));
+  const discountPercent = (formData.originalPrice && parseFloat(formData.originalPrice) > parseFloat(formData.price))
+    ? Math.round(((parseFloat(formData.originalPrice) - parseFloat(formData.price)) / parseFloat(formData.originalPrice)) * 100)
+    : 0;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
@@ -248,8 +253,11 @@ export default function AdminProductModal({ isOpen, onClose, onSaveProduct, init
       setActiveTab('general');
       return;
     }
-    if (!formData.price || parseFloat(formData.price) <= 0) {
-      setErrorMessage('A valid price (Rs.) is required.');
+
+    const cleanPrice = String(formData.price || '').trim().replace(/^(rs\.?|lkr|\$|eur|£)\s*/i, '').replace(/,/g, '').replace(/[^0-9.]/g, '');
+    const parsedPrice = parseFloat(cleanPrice);
+    if (isNaN(parsedPrice) || parsedPrice <= 0) {
+      setErrorMessage('A valid positive price (Rs.) is required.');
       setActiveTab('general');
       return;
     }
@@ -265,18 +273,18 @@ export default function AdminProductModal({ isOpen, onClose, onSaveProduct, init
         }
       });
 
-      const parsedPrice = parseFloat(formData.price);
-      const parsedOrigPrice = formData.originalPrice ? parseFloat(formData.originalPrice) : parsedPrice;
-      const parsedStock = parseInt(formData.stock || '10', 10);
-      const parsedWattage = parseInt(formData.wattage || '0', 10);
+      const cleanOrig = formData.originalPrice ? String(formData.originalPrice).trim().replace(/^(rs\.?|lkr|\$|eur|£)\s*/i, '').replace(/,/g, '').replace(/[^0-9.]/g, '') : '';
+      const parsedOrigPrice = cleanOrig ? parseFloat(cleanOrig) : parsedPrice;
+      const parsedStock = parseInt(String(formData.stock || '10').replace(/[^0-9]/g, ''), 10);
+      const parsedWattage = parseInt(String(formData.wattage || '0').replace(/[^0-9]/g, ''), 10);
 
       const finalProductPayload = {
-        ...(formData.id ? { id: formData.id } : {}),
+        ...(isEditing && formData.id ? { id: formData.id } : {}),
         name: formData.name.trim(),
         category: formData.category,
         brand: formData.brand.trim() || 'Generic Gaming',
         price: parsedPrice,
-        originalPrice: parsedOrigPrice >= parsedPrice ? parsedOrigPrice : parsedPrice,
+        originalPrice: (!isNaN(parsedOrigPrice) && parsedOrigPrice >= parsedPrice) ? parsedOrigPrice : parsedPrice,
         stock: isNaN(parsedStock) ? 10 : parsedStock,
         wattage: isNaN(parsedWattage) ? 0 : parsedWattage,
         image: formData.image || currentCategory.defaultImage,
@@ -297,11 +305,6 @@ export default function AdminProductModal({ isOpen, onClose, onSaveProduct, init
       setIsSubmitting(false);
     }
   };
-
-  const isEditing = Boolean(initialProduct?.id);
-  const discountPercent = (formData.originalPrice && parseFloat(formData.originalPrice) > parseFloat(formData.price))
-    ? Math.round(((parseFloat(formData.originalPrice) - parseFloat(formData.price)) / parseFloat(formData.originalPrice)) * 100)
-    : 0;
 
   return (
     <div
