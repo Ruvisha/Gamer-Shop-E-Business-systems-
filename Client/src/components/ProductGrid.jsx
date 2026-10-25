@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import ProductCard from './ProductCard';
-import { SlidersHorizontal, ArrowUpDown, Flame, SearchX, RotateCcw, Filter, Check, Tag, Star, DollarSign, Cpu, Plus, ShieldAlert, Search } from 'lucide-react';
+import { SlidersHorizontal, ArrowUpDown, Flame, SearchX, RotateCcw, Filter, Check, Tag, Star, DollarSign, Cpu, Plus, ShieldAlert, Search, Package } from 'lucide-react';
 
 export default function ProductGrid({ 
   products, 
@@ -13,7 +13,8 @@ export default function ProductGrid({
   user,
   onEditProduct,
   onDeleteProduct,
-  onOpenAddProductModal
+  onOpenAddProductModal,
+  onOpenAdminProducts
 }) {
   // Multi-Criteria State
   const [selectedBrand, setSelectedBrand] = useState('all');
@@ -674,46 +675,89 @@ export default function ProductGrid({
             {filteredProducts.length > 0 ? (
               <div className="grid-products">
                 {user?.role === 'admin' && (
-                  <div 
-                    onClick={onOpenAddProductModal}
-                    style={{
-                      border: '2px dashed rgba(255, 0, 100, 0.6)',
-                      borderRadius: '16px',
-                      padding: '2rem 1.5rem',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      textAlign: 'center',
-                      gap: '0.8rem',
-                      backgroundColor: 'rgba(255, 0, 100, 0.05)',
-                      cursor: 'pointer',
-                      minHeight: '320px',
-                      transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.borderColor = '#ff0066'}
-                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'rgba(255, 0, 100, 0.6)'}
-                  >
-                    <div style={{
-                      width: '60px',
-                      height: '60px',
-                      borderRadius: '50%',
-                      backgroundColor: 'rgba(255, 0, 100, 0.15)',
-                      border: '1px solid #ff0066',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 0 20px rgba(255, 0, 100, 0.3)'
-                    }}>
-                      <Plus size={30} color="#ff0066" />
+                  <>
+                    <div 
+                      onClick={onOpenAdminProducts}
+                      style={{
+                        border: '2px dashed rgba(0, 240, 255, 0.6)',
+                        borderRadius: '16px',
+                        padding: '2rem 1.5rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center',
+                        gap: '0.8rem',
+                        backgroundColor: 'rgba(0, 240, 255, 0.05)',
+                        cursor: 'pointer',
+                        minHeight: '320px',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.borderColor = '#00f0ff'}
+                      onMouseLeave={(e) => e.currentTarget.style.borderColor = 'rgba(0, 240, 255, 0.6)'}
+                    >
+                      <div style={{
+                        width: '60px',
+                        height: '60px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(0, 240, 255, 0.15)',
+                        border: '1px solid #00f0ff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 0 20px rgba(0, 240, 255, 0.3)'
+                      }}>
+                        <Package size={30} color="#00f0ff" />
+                      </div>
+                      <h3 style={{ color: '#00f0ff', fontSize: '1.05rem', fontWeight: 900, margin: 0, fontFamily: "'Orbitron', sans-serif" }}>
+                        📦 MANAGE INVENTORY
+                      </h3>
+                      <p style={{ color: '#8e9bb0', fontSize: '0.78rem', margin: 0, maxWidth: '220px' }}>
+                        Open Admin Inventory Table to view all {products.length} product items from database, update stock, and edit details.
+                      </p>
                     </div>
-                    <h3 style={{ color: '#ff0066', fontSize: '1.1rem', fontWeight: 900, margin: 0, fontFamily: "'Orbitron', sans-serif" }}>
-                      + ADD NEW PRODUCT
-                    </h3>
-                    <p style={{ color: '#8e9bb0', fontSize: '0.78rem', margin: 0, maxWidth: '200px' }}>
-                      Click to open Admin Product Form and create a new item.
-                    </p>
-                  </div>
+
+                    <div 
+                      onClick={onOpenAddProductModal}
+                      style={{
+                        border: '2px dashed rgba(255, 0, 100, 0.6)',
+                        borderRadius: '16px',
+                        padding: '2rem 1.5rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center',
+                        gap: '0.8rem',
+                        backgroundColor: 'rgba(255, 0, 100, 0.05)',
+                        cursor: 'pointer',
+                        minHeight: '320px',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.borderColor = '#ff0066'}
+                      onMouseLeave={(e) => e.currentTarget.style.borderColor = 'rgba(255, 0, 100, 0.6)'}
+                    >
+                      <div style={{
+                        width: '60px',
+                        height: '60px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(255, 0, 100, 0.15)',
+                        border: '1px solid #ff0066',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 0 20px rgba(255, 0, 100, 0.3)'
+                      }}>
+                        <Plus size={30} color="#ff0066" />
+                      </div>
+                      <h3 style={{ color: '#ff0066', fontSize: '1.05rem', fontWeight: 900, margin: 0, fontFamily: "'Orbitron', sans-serif" }}>
+                        + ADD NEW PRODUCT
+                      </h3>
+                      <p style={{ color: '#8e9bb0', fontSize: '0.78rem', margin: 0, maxWidth: '200px' }}>
+                        Click to open Admin Product Form and create a new item.
+                      </p>
+                    </div>
+                  </>
                 )}
                 {filteredProducts.map((product) => (
                   <ProductCard

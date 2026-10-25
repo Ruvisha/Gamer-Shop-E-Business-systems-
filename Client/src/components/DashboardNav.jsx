@@ -1,7 +1,8 @@
 import React from 'react';
-import { Home, SlidersHorizontal, Wrench, Zap, Layers } from 'lucide-react';
+import { Home, SlidersHorizontal, Wrench, Zap, Layers, Package, ShieldAlert } from 'lucide-react';
 
-export default function DashboardNav({ activeSection, setActiveSection, totalProductsCount, dealProductsCount }) {
+export default function DashboardNav({ activeSection, setActiveSection, totalProductsCount, dealProductsCount, user, onOpenAdminProducts }) {
+  const isAdmin = user?.role === 'admin';
   const navItems = [
     {
       id: 'home',
@@ -144,6 +145,34 @@ export default function DashboardNav({ activeSection, setActiveSection, totalPro
               </button>
             );
           })}
+
+          {isAdmin && (
+            <button
+              onClick={onOpenAdminProducts}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.55rem',
+                padding: '0.55rem 1.1rem',
+                borderRadius: '12px',
+                border: '1px solid rgba(255, 0, 100, 0.6)',
+                background: 'linear-gradient(135deg, rgba(255, 0, 100, 0.18) 0%, rgba(112, 0, 255, 0.25) 100%)',
+                color: '#ff0066',
+                cursor: 'pointer',
+                fontSize: '0.82rem',
+                fontWeight: 800,
+                fontFamily: 'var(--font-heading)',
+                letterSpacing: '0.3px',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                whiteSpace: 'nowrap',
+                boxShadow: '0 0 15px rgba(255, 0, 100, 0.3)'
+              }}
+              title="Open full Admin Products Inventory & Database Management"
+            >
+              <Package size={16} color="#ff0066" />
+              <span>ADMIN INVENTORY ({totalProductsCount || 20})</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

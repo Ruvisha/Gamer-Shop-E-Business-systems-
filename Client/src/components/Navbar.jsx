@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ShoppingBag, Search, Wrench, Heart, Zap, Menu, X, ShieldCheck, User, LogOut, Plus, Crown, PackageCheck, ChevronRight, Sparkles, ArrowRight } from 'lucide-react';
+import { ShoppingBag, Search, Wrench, Heart, Zap, Menu, X, ShieldCheck, User, LogOut, Plus, Crown, PackageCheck, ChevronRight, Sparkles, ArrowRight, Package } from 'lucide-react';
 
 function highlightSearchMatch(text = '', query = '') {
   if (!query || !text) return text;
@@ -39,6 +39,7 @@ export default function Navbar({
   onOpenAuth,
   onLogout,
   onOpenAddProductModal,
+  onOpenAdminProducts,
   onOpenUserOrders,
   onOpenAdminOrders,
   activeSection,
@@ -209,6 +210,29 @@ export default function Navbar({
             {/* Admin Controls (Only visible for Admins) */}
             {isAdmin && (
               <>
+                <button
+                  onClick={onOpenAdminProducts}
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(0, 240, 255, 0.2) 0%, rgba(112, 0, 255, 0.3) 100%)',
+                    border: '1px solid #00f0ff',
+                    color: '#00f0ff',
+                    borderRadius: '12px',
+                    padding: '0.6rem 0.95rem',
+                    fontSize: '0.8rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.45rem',
+                    fontFamily: "'Orbitron', sans-serif",
+                    boxShadow: '0 0 15px rgba(0, 240, 255, 0.3)'
+                  }}
+                  title="View all products and live inventory from database"
+                >
+                  <Package size={16} color="#00f0ff" />
+                  <span>MANAGE PRODUCTS ({products.length})</span>
+                </button>
+
                 <button
                   onClick={onOpenAddProductModal}
                   style={{
