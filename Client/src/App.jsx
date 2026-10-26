@@ -15,6 +15,7 @@ import AdminProductModal from './components/AdminProductModal';
 import AdminProductsManagerModal from './components/AdminProductsManagerModal';
 import UserOrdersModal from './components/UserOrdersModal';
 import AdminOrdersModal from './components/AdminOrdersModal';
+import MongoCompassModal from './components/MongoCompassModal';
 import Toast from './components/Toast';
 
 export default function App() {
@@ -38,12 +39,39 @@ export default function App() {
 
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isAdminProductsOpen, setIsAdminProductsOpen] = useState(false);
+  const [isMongoModalOpen, setIsMongoModalOpen] = useState(false);
+  const [dbStatus, setDbStatus] = useState({
+    connected: true,
+    dbName: 'gamer_shop',
+    productsCount: 27,
+    ordersCount: 29,
+    usersCount: 13,
+    imagesCount: 42
+  });
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [toast, setToast] = useState(null);
   const [activeSection, setActiveSection] = useState('home'); // 'home', 'catalog', 'builder', 'deals', 'product-details'
 
-  // Fetch product list directly from MongoDB database on mount
-  const fetchProducts = async () => {
+  // Fetch real-time database connection & statistics from MongoDB
+  const fetchDatabaseStatus = async () => {
+    try {
+      let res = await fetch('/api/database/status').catch(() => null);
+      if (!res || !res.ok) {
+        res = await fetch('http://localhost:3000/api/database/status').catch(() => null);
+      }
+      if (res && res.ok) {
+        const data = await res.json();
+        setDbStatus(data);
+      }
+    } catch (e) {
+      console.warn('Database status check warning:', e.message);
+    }
+  };
+
+  // Fetch product list directly from MongoDB database on mount and live sync
+  const fetchProducts = async (showManualFeedback = false) => {
+    if (showManualFeedback) setIsManualRefreshing(true);
     setIsLoadingProducts(true);
     setDbError(null);
     try {
@@ -60,6 +88,13 @@ export default function App() {
             fallbackImage: p.fallbackImage || `/images/${p.id}.jpg`
           }));
           setAllProducts(normalized);
+          if (showManualFeedback) {
+            setToast({
+              type: 'auth',
+              title: 'LIVE MONGODB SYNCED',
+              message: `Loaded ${normalized.length} products live from MongoDB (${dbStatus?.dbName || 'gamer_shop'})!`
+            });
+          }
         } else {
           setAllProducts([]);
         }
@@ -71,19 +106,34 @@ export default function App() {
       setDbError(err.message || 'Database connection error');
     } finally {
       setIsLoadingProducts(false);
+      if (showManualFeedback) {
+        setTimeout(() => setIsManualRefreshing(false), 500);
+      }
     }
   };
 
   useEffect(() => {
     fetchProducts();
-    const timer = setInterval(() => {
-      // Auto-recheck if initial fetch was before backend/MongoDB ready
-      if (allProducts.length === 0) {
-        fetchProducts();
-      }
-    }, 4000);
-    return () => clearInterval(timer);
-  }, [allProducts.length]);
+    fetchDatabaseStatus();
+
+    // Auto-fetch whenever user switches back from MongoDB Compass to browser window
+    const handleFocus = () => {
+      fetchProducts();
+      fetchDatabaseStatus();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    // Continuous live polling every 8 seconds so edits in MongoDB Compass appear in real-time
+    const intervalTimer = setInterval(() => {
+      fetchProducts();
+      fetchDatabaseStatus();
+    }, 8000);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      clearInterval(intervalTimer);
+    };
+  }, []);
 
   // Handle PayHere Payment Return Redirect URL parameters
   useEffect(() => {
@@ -511,6 +561,10 @@ export default function App() {
         products={allProducts}
         onQuickView={handleOpenProductDetails}
         onAddToCart={handleAddToCart}
+        dbStatus={dbStatus}
+        onOpenMongoInfo={() => setIsMongoModalOpen(true)}
+        onRefreshProducts={() => fetchProducts(true)}
+        isRefreshingProducts={isManualRefreshing}
       />
 
       {/* Secondary Dashboard Navigation Bar */}
@@ -780,6 +834,16 @@ export default function App() {
       <AdminOrdersModal
         isOpen={isAdminOrdersOpen}
         onClose={() => setIsAdminOrdersOpen(false)}
+      />
+
+      {/* MongoDB Compass Live Connection & Data Info Modal */}
+      <MongoCompassModal
+        isOpen={isMongoModalOpen}
+        onClose={() => setIsMongoModalOpen(false)}
+        dbStatus={dbStatus}
+        productsCount={allProducts.length}
+        onRefresh={() => fetchProducts(true)}
+        isRefreshing={isManualRefreshing}
       />
 
       {/* Toast Notification System */}

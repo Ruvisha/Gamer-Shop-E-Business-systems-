@@ -5,27 +5,7 @@ export default function UserOrdersModal({ isOpen, onClose, user }) {
   const [orders, setOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const fetchUserOrders = async () => {
-    if (!user || !user.email) return;
-    setIsLoading(true);
-    try {
-      const res = await fetch(`http://localhost:3000/api/user/orders?email=${encodeURIComponent(user.email)}`);
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setOrders(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch user orders:', err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  useEffect(() => {
-    if (isOpen && user?.email) {
-      fetchUserOrders();
-    }
-  }, [isOpen, user]);
 
   if (!isOpen) return null;
 

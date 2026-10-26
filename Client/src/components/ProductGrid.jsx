@@ -2,13 +2,13 @@ import React, { useState, useMemo } from 'react';
 import ProductCard from './ProductCard';
 import { SlidersHorizontal, ArrowUpDown, Flame, SearchX, RotateCcw, Filter, Check, Tag, Star, DollarSign, Cpu, Plus, ShieldAlert, Search, Package } from 'lucide-react';
 
-export default function ProductGrid({ 
-  products, 
-  activeCategory, 
+export default function ProductGrid({
+  products,
+  activeCategory,
   setActiveCategory,
-  searchQuery, 
+  searchQuery,
   setSearchQuery,
-  onAddToCart, 
+  onAddToCart,
   onQuickView,
   user,
   onEditProduct,
@@ -102,7 +102,7 @@ export default function ProductGrid({
         const matchesTag = (product.tag || '').toLowerCase().includes(query);
         const matchesDescription = (product.description || '').toLowerCase().includes(query);
         const matchesSpecs = product.specs ? JSON.stringify(product.specs).toLowerCase().includes(query) : false;
-        
+
         if (!matchesName && !matchesBrand && !matchesCategory && !matchesTag && !matchesDescription && !matchesSpecs) {
           return false;
         }
@@ -146,7 +146,7 @@ export default function ProductGrid({
   return (
     <section id="products-section" style={{ padding: '3.5rem 0 4rem' }}>
       <div className="container">
-        
+
         {/* Section Title Header */}
         <div style={{
           marginBottom: '2rem',
@@ -676,7 +676,7 @@ export default function ProductGrid({
               <div className="grid-products">
                 {user?.role === 'admin' && (
                   <>
-                    <div 
+                    <div
                       onClick={onOpenAdminProducts}
                       style={{
                         border: '2px dashed rgba(0, 240, 255, 0.6)',
@@ -717,7 +717,7 @@ export default function ProductGrid({
                       </p>
                     </div>
 
-                    <div 
+                    <div
                       onClick={onOpenAddProductModal}
                       style={{
                         border: '2px dashed rgba(255, 0, 100, 0.6)',

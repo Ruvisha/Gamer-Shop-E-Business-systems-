@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { X, ShieldCheck, CheckCircle2, Clock, Truck, RefreshCw, XCircle, DollarSign, CreditCard, User, MapPin, Phone, Mail, ShoppingBag, AlertCircle } from 'lucide-react';
-
 export default function AdminOrdersModal({ isOpen, onClose }) {
   const [orders, setOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -11,7 +10,15 @@ export default function AdminOrdersModal({ isOpen, onClose }) {
   const fetchAllOrders = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('http://localhost:3000/api/admin/orders');
+      let res;
+      try {
+        res = await fetch('/api/admin/orders');
+      } catch (e) {
+        res = await fetch('http://localhost:3000/api/admin/orders');
+      }
+      if (!res.ok) {
+        res = await fetch('http://localhost:3000/api/admin/orders');
+      }
       const data = await res.json();
       if (Array.isArray(data)) {
         setOrders(data);
@@ -27,6 +34,9 @@ export default function AdminOrdersModal({ isOpen, onClose }) {
     if (isOpen) {
       fetchAllOrders();
       setFeedback(null);
+      // Auto-poll every 5 seconds for live database updates
+      const interval = setInterval(fetchAllOrders, 5000);
+      return () => clearInterval(interval);
     }
   }, [isOpen]);
 
@@ -41,15 +51,34 @@ export default function AdminOrdersModal({ isOpen, onClose }) {
 
     try {
       const encodedId = encodeURIComponent(orderId);
-      const res = await fetch(`http://localhost:3000/api/admin/orders/${encodedId}/approval`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId,
-          adminApprovalStatus: newStatus,
-          paymentStatus: newStatus === 'REJECTED' ? 'CANCELLED' : undefined
-        })
-      });
+      let res;
+      const payload = {
+        orderId,
+        adminApprovalStatus: newStatus,
+        paymentStatus: newStatus === 'REJECTED' ? 'CANCELLED' : undefined
+      };
+
+      try {
+        res = await fetch(`/api/admin/orders/${encodedId}/approval`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch (e) {
+        res = await fetch(`http://localhost:3000/api/admin/orders/${encodedId}/approval`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
+
+      if (!res.ok) {
+        res = await fetch(`http://localhost:3000/api/admin/orders/${encodedId}/approval`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
 
       let data = {};
       try {
@@ -307,26 +336,25 @@ export default function AdminOrdersModal({ isOpen, onClose }) {
                             backgroundColor: approvalStatus === 'REJECTED' || ord.paymentStatus === 'CANCELLED'
                               ? 'rgba(255, 0, 85, 0.15)'
                               : ord.paymentStatus === 'PAID'
-                              ? 'rgba(0, 230, 153, 0.15)'
-                              : 'rgba(255, 170, 0, 0.15)',
+                                ? 'rgba(0, 230, 153, 0.15)'
+                                : 'rgba(255, 170, 0, 0.15)',
                             color: approvalStatus === 'REJECTED' || ord.paymentStatus === 'CANCELLED'
                               ? '#ff0055'
                               : ord.paymentStatus === 'PAID'
-                              ? '#00e699'
-                              : '#ffaa00',
-                            border: `1px solid ${
-                              approvalStatus === 'REJECTED' || ord.paymentStatus === 'CANCELLED'
+                                ? '#00e699'
+                                : '#ffaa00',
+                            border: `1px solid ${approvalStatus === 'REJECTED' || ord.paymentStatus === 'CANCELLED'
                                 ? '#ff0055'
                                 : ord.paymentStatus === 'PAID'
-                                ? '#00e699'
-                                : '#ffaa00'
-                            }`
+                                  ? '#00e699'
+                                  : '#ffaa00'
+                              }`
                           }}>
                             {approvalStatus === 'REJECTED' || ord.paymentStatus === 'CANCELLED'
                               ? 'ORDER REJECTED / CANCELLED'
                               : ord.paymentStatus === 'PAID'
-                              ? 'PAYMENT APPROVED (PayHere Sandbox)'
-                              : 'PENDING PAYMENT'}
+                                ? 'PAYMENT APPROVED (PayHere Sandbox)'
+                                : 'PENDING PAYMENT'}
                           </span>
                         </div>
                         <div style={{ fontSize: '0.75rem', color: '#667799', marginTop: '2px' }}>
@@ -414,18 +442,18 @@ export default function AdminOrdersModal({ isOpen, onClose }) {
                               borderRadius: '6px'
                             }}
                           >
-                              <img 
-                                src={itm.image} 
-                                alt={itm.title} 
-                                onError={(e) => {
-                                  e.currentTarget.onerror = null;
-                                  const fallback = itm.fallbackImage || `/images/${itm.id}.jpg`;
-                                  if (e.currentTarget.src !== fallback && !e.currentTarget.src.endsWith(fallback)) {
-                                    e.currentTarget.src = fallback;
-                                  }
-                                }}
-                                style={{ width: '28px', height: '28px', objectFit: 'cover', borderRadius: '4px' }} 
-                              />
+                            <img
+                              src={itm.image}
+                              alt={itm.title}
+                              onError={(e) => {
+                                e.currentTarget.onerror = null;
+                                const fallback = itm.fallbackImage || `/images/${itm.id}.jpg`;
+                                if (e.currentTarget.src !== fallback && !e.currentTarget.src.endsWith(fallback)) {
+                                  e.currentTarget.src = fallback;
+                                }
+                              }}
+                              style={{ width: '28px', height: '28px', objectFit: 'cover', borderRadius: '4px' }}
+                            />
                             <div style={{ fontSize: '0.75rem', color: '#fff' }}>
                               <span style={{ fontWeight: 700 }}>{itm.title}</span> <span style={{ color: '#ff0055' }}>x{itm.quantity || 1}</span>
                             </div>

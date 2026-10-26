@@ -79,18 +79,27 @@ app.get("/api/database/status", async (req, res) => {
   const isConnected = mongoose.connection.readyState === 1;
   let productsCount = 0;
   let imagesCount = 0;
+  let ordersCount = 0;
+  let usersCount = 0;
   if (isConnected) {
     try {
       productsCount = await Product.countDocuments();
       imagesCount = await ImageModel.countDocuments();
-    } catch (e) {}
+      ordersCount = await Order.countDocuments();
+      usersCount = await User.countDocuments();
+    } catch (e) { }
   }
   res.json({
     connected: isConnected,
     dbName: mongoose.connection.name || "gamer_shop",
+    uri: "mongodb://127.0.0.1:27017/gamer_shop",
+    compassHint: "mongodb://127.0.0.1:27017",
     productsCount,
     imagesCount,
-    status: isConnected ? "Active & Connected to MongoDB" : "Connecting..."
+    ordersCount,
+    usersCount,
+    status: isConnected ? "Active & Connected to MongoDB" : "Connecting...",
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -108,20 +117,52 @@ app.post("/api/database/sync", async (req, res) => {
   }
 });
 
+// Currency & Number sanitization helper
+export function parseCurrencyNumber(val) {
+  if (val === undefined || val === null || val === '') return NaN;
+  if (typeof val === 'number') return isNaN(val) ? NaN : val;
+  let s = String(val).trim();
+  s = s.replace(/^(rs\.?|lkr|\$|eur|£)\s*/i, '');
+  s = s.replace(/,/g, '');
+  s = s.replace(/[^0-9.]/g, '');
+  return parseFloat(s);
+}
+
 // Helper to format product data and normalize image URLs for client rendering
 export function formatProductForClient(product) {
   const p = product.toObject ? product.toObject() : { ...product };
+  
+  // If document was inserted directly in MongoDB Compass without an explicit 'id' field, fallback to _id
+  if (!p.id && p._id) {
+    p.id = p._id.toString();
+  }
+  const effectiveId = p.id || (p._id ? p._id.toString() : `item-${Math.random().toString(36).slice(2, 8)}`);
+  p.id = effectiveId;
+
   if (!p.image) {
-    p.image = `/api/images/${p.id}`;
+    p.image = `/api/images/${effectiveId}`;
   }
   if (!p.fallbackImage) {
-    p.fallbackImage = `/images/${p.id}.jpg`;
+    p.fallbackImage = `/images/${effectiveId}.jpg`;
   }
-  p.image = resolveImageUrl(p.image, `/api/images/${p.id}`);
-  p.fallbackImage = resolveImageUrl(p.fallbackImage, `/images/${p.id}.jpg`);
+  p.image = resolveImageUrl(p.image, `/api/images/${effectiveId}`);
+  p.fallbackImage = resolveImageUrl(p.fallbackImage, `/images/${effectiveId}.jpg`);
   p.specs = (p.specs && typeof p.specs === "object") ? p.specs : {};
-  p.wattage = typeof p.wattage === "number" ? p.wattage : 0;
-  p.stock = typeof p.stock === "number" ? p.stock : 10;
+
+  // Clean numbers so changes made in MongoDB Compass (even as strings) format seamlessly
+  const parsedPrice = parseCurrencyNumber(p.price);
+  p.price = (!isNaN(parsedPrice) && parsedPrice >= 0) ? parsedPrice : 0;
+
+  const parsedOrig = parseCurrencyNumber(p.originalPrice);
+  p.originalPrice = (!isNaN(parsedOrig) && parsedOrig >= p.price) ? parsedOrig : p.price;
+
+  p.wattage = typeof p.wattage === "number" ? p.wattage : (parseInt(p.wattage, 10) || 0);
+  p.stock = typeof p.stock === "number" ? p.stock : (parseInt(p.stock, 10) || 0);
+  p.rating = typeof p.rating === "number" ? p.rating : (parseFloat(p.rating) || 5.0);
+  p.reviewsCount = Array.isArray(p.reviews) ? p.reviews.length : (parseInt(p.reviewsCount, 10) || 0);
+  p.category = (p.category || 'gpu').toLowerCase().trim();
+  p.brand = p.brand ? String(p.brand).trim() : 'Generic';
+  p.name = p.name ? String(p.name).trim() : 'Gaming Component';
   return p;
 }
 
@@ -131,7 +172,7 @@ app.get("/api/images/:id", async (req, res) => {
   let { id } = req.params;
   try {
     id = decodeURIComponent(id);
-  } catch (e) {}
+  } catch (e) { }
 
   const cleanId = id.replace(/\.(jpg|jpeg|png|webp|gif)$/i, "");
 
@@ -590,21 +631,11 @@ app.post("/api/products/:id/reviews", async (req, res) => {
   }
 });
 
-// Currency & Number sanitization helper
-export function parseCurrencyNumber(val) {
-  if (val === undefined || val === null || val === '') return NaN;
-  if (typeof val === 'number') return isNaN(val) ? NaN : val;
-  let s = String(val).trim();
-  s = s.replace(/^(rs\.?|lkr|\$|eur|£)\s*/i, '');
-  s = s.replace(/,/g, '');
-  s = s.replace(/[^0-9.]/g, '');
-  return parseFloat(s);
-}
 
 // ADMIN ONLY: POST /api/products (Create Product directly in MongoDB)
 app.post("/api/products", async (req, res) => {
   const { name, category, brand, price, originalPrice, stock, image, description, specs, isFeatured, isFlashSale, tag, wattage } = req.body;
-  
+
   if (!name || !name.trim()) {
     return res.status(400).json({ error: "Product title is required." });
   }
@@ -870,7 +901,7 @@ app.post("/api/payment/checkout-data", async (req, res) => {
     const orderId = `#${Math.floor(100000000000 + Math.random() * 900000000000)}`;
     const formattedAmount = Number(amount).toFixed(2);
     const currency = PAYHERE_CURRENCY;
-const hash = generatePayHereHash(PAYHERE_MERCHANT_ID, orderId, formattedAmount, currency, PAYHERE_MERCHANT_SECRET);
+    const hash = generatePayHereHash(PAYHERE_MERCHANT_ID, orderId, formattedAmount, currency, PAYHERE_MERCHANT_SECRET);
 
     const deliveryInfo = {
       fullName: customerDetails.fullName || userName,
@@ -909,15 +940,15 @@ const hash = generatePayHereHash(PAYHERE_MERCHANT_ID, orderId, formattedAmount, 
     const first_name = deliveryInfo.fullName.split(" ")[0] || "Gamer";
     const last_name = deliveryInfo.fullName.split(" ").slice(1).join(" ") || "Customer";
 
-    const itemSummary = items.length > 0 
-      ? items.map(i => `${i.name} (x${i.quantity})`).join(", ").substring(0, 100) 
+    const itemSummary = items.length > 0
+      ? items.map(i => `${i.name} (x${i.quantity})`).join(", ").substring(0, 100)
       : "Gaming Hardware Order";
 
     res.json({
       success: true,
       sandboxUrl: "https://sandbox.payhere.lk/pay/checkout",
       merchantId: PAYHERE_MERCHANT_ID,
-merchantSecret: PAYHERE_MERCHANT_SECRET,
+      merchantSecret: PAYHERE_MERCHANT_SECRET,
       orderId,
       items: itemSummary,
       currency,
@@ -1003,8 +1034,23 @@ app.post("/api/payment/confirm-manual", async (req, res) => {
 app.get(["/api/orders", "/api/admin/orders"], async (req, res) => {
   if (mongoose.connection.readyState === 1) {
     try {
-      const orders = await Order.find().sort({ createdAt: -1 });
-      return res.json(orders);
+      const orders = await Order.find().sort({ createdAt: -1 }).lean();
+      const formatted = orders.map(ord => ({
+        ...ord,
+        amountLKR: ord.amountLKR ?? ord.amount ?? 0,
+        paymentStatus: ord.paymentStatus || ord.status || "PAID",
+        adminApprovalStatus: ord.adminApprovalStatus || "PENDING_APPROVAL",
+        deliveryDetails: ord.deliveryDetails || {
+          fullName: ord.customerDetails ? `${ord.customerDetails.firstName || ''} ${ord.customerDetails.lastName || ''}`.trim() : (ord.userName || "Customer"),
+          email: ord.customerDetails?.email || ord.userEmail || "",
+          primaryPhone: ord.customerDetails?.phone || "0771234567",
+          address: ord.customerDetails?.address || "Galle Road",
+          city: ord.customerDetails?.city || "Colombo",
+          district: ord.customerDetails?.district || ord.customerDetails?.city || "Colombo",
+          country: ord.customerDetails?.country || "Sri Lanka"
+        }
+      }));
+      return res.json(formatted);
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -1022,9 +1068,24 @@ app.get("/api/user/orders", async (req, res) => {
   if (mongoose.connection.readyState === 1) {
     try {
       const userOrders = await Order.find({
-        $or: [{ userEmail: email.trim() }, { "deliveryDetails.email": email.trim() }]
-      }).sort({ createdAt: -1 });
-      return res.json(userOrders);
+        $or: [{ userEmail: email.trim() }, { "deliveryDetails.email": email.trim() }, { "customerDetails.email": email.trim() }]
+      }).sort({ createdAt: -1 }).lean();
+      const formatted = userOrders.map(ord => ({
+        ...ord,
+        amountLKR: ord.amountLKR ?? ord.amount ?? 0,
+        paymentStatus: ord.paymentStatus || ord.status || "PAID",
+        adminApprovalStatus: ord.adminApprovalStatus || "PENDING_APPROVAL",
+        deliveryDetails: ord.deliveryDetails || {
+          fullName: ord.customerDetails ? `${ord.customerDetails.firstName || ''} ${ord.customerDetails.lastName || ''}`.trim() : (ord.userName || "Customer"),
+          email: ord.customerDetails?.email || ord.userEmail || "",
+          primaryPhone: ord.customerDetails?.phone || "0771234567",
+          address: ord.customerDetails?.address || "Galle Road",
+          city: ord.customerDetails?.city || "Colombo",
+          district: ord.customerDetails?.district || ord.customerDetails?.city || "Colombo",
+          country: ord.customerDetails?.country || "Sri Lanka"
+        }
+      }));
+      return res.json(formatted);
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }

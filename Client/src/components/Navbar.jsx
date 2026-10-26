@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ShoppingBag, Search, Wrench, Heart, Zap, Menu, X, ShieldCheck, User, LogOut, Plus, Crown, PackageCheck, ChevronRight, Sparkles, ArrowRight, Package } from 'lucide-react';
+import { ShoppingBag, Search, Wrench, Heart, Zap, Menu, X, ShieldCheck, User, LogOut, Plus, Crown, PackageCheck, ChevronRight, Sparkles, ArrowRight, Package, Database, RefreshCw } from 'lucide-react';
 
 function highlightSearchMatch(text = '', query = '') {
   if (!query || !text) return text;
@@ -46,7 +46,11 @@ export default function Navbar({
   setActiveSection,
   products = [],
   onQuickView,
-  onAddToCart
+  onAddToCart,
+  dbStatus,
+  onOpenMongoInfo,
+  onRefreshProducts,
+  isRefreshingProducts
 }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -157,8 +161,56 @@ export default function Navbar({
           alignItems: 'center',
           justifyContent: 'space-between'
         }}>
-          {/* Left Spacer for symmetry */}
-          <div style={{ flex: 1, minWidth: '100px' }} />
+          {/* Left: Live MongoDB Compass Status & Refresh (Admin Only) or Spacer for User Side */}
+          <div style={{ flex: 1, minWidth: isAdmin ? '220px' : '100px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {isAdmin && (
+              <>
+                <button
+                  onClick={onOpenMongoInfo}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    backgroundColor: 'rgba(0, 240, 255, 0.08)',
+                    border: '1px solid rgba(0, 240, 255, 0.3)',
+                    borderRadius: '8px',
+                    padding: '0.35rem 0.65rem',
+                    color: '#00f0ff',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    fontFamily: "'Orbitron', sans-serif",
+                    transition: 'all 0.2s ease'
+                  }}
+                  title="Click to view live MongoDB Compass connection details & collections"
+                >
+                  <Database size={14} color="#00ed64" />
+                  <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', backgroundColor: dbStatus?.connected ? '#00ed64' : '#ffaa00', boxShadow: dbStatus?.connected ? '0 0 8px #00ed64' : 'none' }}></span>
+                  <span>MONGO: {dbStatus?.database || 'gamer_shop'}</span>
+                </button>
+
+                <button
+                  onClick={onRefreshProducts}
+                  disabled={isRefreshingProducts}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    borderRadius: '8px',
+                    padding: '0.35rem 0.5rem',
+                    color: '#fff',
+                    cursor: isRefreshingProducts ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                  title="Sync live products immediately from MongoDB"
+                >
+                  <RefreshCw size={13} style={{ animation: isRefreshingProducts ? 'spin 1s linear infinite' : 'none' }} />
+                </button>
+              </>
+            )}
+          </div>
 
           {/* Center Section: GAMER SHOP Title */}
           <div
@@ -679,7 +731,7 @@ export default function Navbar({
                     View all {matchingProducts.length} matching products in Catalog <ArrowRight size={14} />
                   </span>
                   <span style={{ fontSize: '0.68rem', color: '#8e9bb0', textTransform: 'uppercase' }}>
-                    Live DB Search
+                    Instant Search
                   </span>
                 </div>
               )}
